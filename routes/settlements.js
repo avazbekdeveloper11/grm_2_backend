@@ -1,0 +1,138 @@
+const express = require('express');
+const { getDb } = require('../database');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+
+const router = express.Router();
+
+// GET /api/settlements/balances — barcha haydovchilar balansi
+router.get('/balances', requireAuth, (req, res) => {
+  const db = getDb();
+
+  const drivers = db.prepare(`
+    SELECT u.id, u.name, u.login
+    FROM users u
+    WHERE u.role = 'driver' AND u.is_active = 1
+    ORDER BY u.name
+  `).all();
+
+  const result = drivers.map(driver => {
+    // Jami yig'ilgan (buyurtmalardan)
+    const collected = db.prepare(`
+      SELECT COALESCE(SUM(total_price), 0) as total, COUNT(*) as count
+      FROM orders
+      WHERE collected_by = ? AND payment_status = 'tolangan'
+    `).get(driver.id);
+
+    // Jami topshirilgan (adminga)
+    const settled = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) as total, COUNT(*) as count
+      FROM driver_settlements
+      WHERE driver_id = ?
+    `).get(driver.id);
+
+    // So'nggi topshirish sanasi
+    const lastSettlement = db.prepare(`
+      SELECT created_at FROM driver_settlements
+      WHERE driver_id = ?
+      ORDER BY created_at DESC LIMIT 1
+    `).get(driver.id);
+
+    return {
+      id: driver.id,
+      name: driver.name,
+      login: driver.login,
+      total_collected: collected.total,
+      collected_count: collected.count,
+      total_settled: settled.total,
+      settled_count: settled.count,
+      balance: collected.total - settled.total, // haydovchida qolgan pul
+      last_settlement: lastSettlement?.created_at || null,
+    };
+  });
+
+  res.json(result);
+});
+
+// GET /api/settlements/driver/:id — haydovchi tarixi
+router.get('/driver/:id', requireAuth, (req, res) => {
+  const db = getDb();
+  const driverId = Number(req.params.id);
+
+  // Yig'ilgan buyurtmalar (kunlik guruhlangan)
+  const collectedOrders = db.prepare(`
+    SELECT
+      date(collected_at) as day,
+      COUNT(*) as count,
+      SUM(total_price) as total
+    FROM orders
+    WHERE collected_by = ? AND payment_status = 'tolangan'
+    GROUP BY date(collected_at)
+    ORDER BY day DESC
+    LIMIT 30
+  `).all(driverId);
+
+  // Topshirish tarixi
+  const settlements = db.prepare(`
+    SELECT ds.*, u.name as admin_name
+    FROM driver_settlements ds
+    LEFT JOIN users u ON u.id = ds.admin_id
+    WHERE ds.driver_id = ?
+    ORDER BY ds.created_at DESC
+    LIMIT 30
+  `).all(driverId);
+
+  // Balans
+  const balance = db.prepare(`
+    SELECT
+      COALESCE((SELECT SUM(total_price) FROM orders WHERE collected_by = ? AND payment_status = 'tolangan'), 0)
+      - COALESCE((SELECT SUM(amount) FROM driver_settlements WHERE driver_id = ?), 0) as balance
+  `).get(driverId, driverId);
+
+  res.json({ collectedOrders, settlements, balance: balance.balance });
+});
+
+// POST /api/settlements — admin haydovchidan pul oldi
+router.post('/', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { driver_id, amount, note } = req.body;
+
+  if (!driver_id || !amount || amount <= 0) {
+    return res.status(400).json({ error: "driver_id va amount talab qilinadi" });
+  }
+
+  // Haydovchi balansini tekshirish
+  const collected = db.prepare(`
+    SELECT COALESCE(SUM(total_price), 0) as total FROM orders
+    WHERE collected_by = ? AND payment_status = 'tolangan'
+  `).get(Number(driver_id));
+
+  const settled = db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) as total FROM driver_settlements
+    WHERE driver_id = ?
+  `).get(Number(driver_id));
+
+  const balance = collected.total - settled.total;
+  if (amount > balance + 0.01) {
+    return res.status(400).json({
+      error: `Haydovchida faqat ${balance} so'm bor`,
+      balance
+    });
+  }
+
+  const result = db.prepare(`
+    INSERT INTO driver_settlements (driver_id, amount, note, admin_id)
+    VALUES (?, ?, ?, ?)
+  `).run(Number(driver_id), Number(amount), note || null, req.user.id);
+
+  const row = db.prepare('SELECT * FROM driver_settlements WHERE id = ?').get(result.lastInsertRowid);
+  res.status(201).json(row);
+});
+
+// DELETE /api/settlements/:id — xato kiritilganda o'chirish (admin)
+router.delete('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  db.prepare('DELETE FROM driver_settlements WHERE id = ?').run(Number(req.params.id));
+  res.json({ success: true });
+});
+
+module.exports = router;
