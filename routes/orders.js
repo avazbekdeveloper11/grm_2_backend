@@ -214,4 +214,65 @@ router.get('/:id/carpets', requireAuth, (req, res) => {
   res.json(carpets);
 });
 
+// POST /api/orders/:id/collect  — haydovchi to'lovni oldi
+router.post('/:id/collect', requireAuth, (req, res) => {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  const collectorId = req.user.id;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE orders
+    SET payment_status = 'tolangan', collected_by = ?, collected_at = ?
+    WHERE id = ?
+  `).run(collectorId, now, id);
+
+  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  res.json(updated);
+});
+
+// GET /api/drivers/collections?date=2026-05-17  — admin: haydovchilar yig'imi
+router.get('/drivers/collections', requireAuth, (req, res) => {
+  const db = getDb();
+  const { date } = req.query;
+
+  let where = "o.payment_status = 'tolangan' AND o.collected_by IS NOT NULL";
+  const params = [];
+
+  if (date) {
+    where += " AND date(o.collected_at) = ?";
+    params.push(date);
+  }
+
+  // Per-driver totals
+  const rows = db.prepare(`
+    SELECT
+      u.id, u.name,
+      COUNT(o.id) as order_count,
+      SUM(o.total_price) as total_collected,
+      GROUP_CONCAT(o.id) as order_ids
+    FROM users u
+    LEFT JOIN orders o ON o.collected_by = u.id AND ${where}
+    WHERE u.role = 'driver' AND u.is_active = 1
+    GROUP BY u.id
+  `).all(...params);
+
+  // Uncollected (assigned to driver but not paid)
+  const uncollected = db.prepare(`
+    SELECT
+      u.id as driver_id, u.name as driver_name,
+      o.id, o.customer_name, o.total_price, o.status
+    FROM orders o
+    JOIN users u ON u.id = o.assigned_driver_id
+    WHERE o.payment_status = 'tolanmagan'
+      AND o.assigned_driver_id IS NOT NULL
+    ORDER BY o.created_at DESC
+  `).all();
+
+  res.json({ drivers: rows, uncollected });
+});
+
 module.exports = router;

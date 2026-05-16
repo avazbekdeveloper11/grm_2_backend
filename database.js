@@ -47,6 +47,8 @@ function initDb() {
       total_price REAL NOT NULL DEFAULT 0,
       pickup_lat REAL,
       pickup_lng REAL,
+      collected_by INTEGER REFERENCES users(id),
+      collected_at TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
