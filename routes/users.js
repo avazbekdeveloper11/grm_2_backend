@@ -91,4 +91,12 @@ router.put('/:id/activate', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// GET /api/users/:id/password — admin faqat ko'rishi mumkin
+router.get('/:id/password', requireAdmin, (req, res) => {
+  const db = getDb();
+  const user = db.prepare('SELECT login, password FROM users WHERE id = ?').get(Number(req.params.id));
+  if (!user) return res.status(404).json({ error: 'Topilmadi' });
+  res.json({ login: user.login, password: user.password });
+});
+
 module.exports = router;
