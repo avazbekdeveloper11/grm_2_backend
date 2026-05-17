@@ -1,66 +1,112 @@
+const { GoogleAuth } = require('google-auth-library');
 const https = require('https');
 
-const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY || '';
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'grm-mobile';
 
-/**
- * FCM Legacy HTTP API orqali push notification yuborish.
- * token — qurilma FCM tokeni
- * title — xabar sarlavhasi
- * body  — xabar matni
- * data  — qo'shimcha ma'lumot (ixtiyoriy)
- */
-async function sendPush(token, title, body, data = {}) {
-  if (!FCM_SERVER_KEY) {
-    console.log('FCM_SERVER_KEY sozlanmagan — push yuborilmadi');
-    return;
+// Service account JSON — env var dan olinadi (base64 encoded)
+function getServiceAccount() {
+  const b64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  if (b64) {
+    try {
+      return JSON.parse(Buffer.from(b64, 'base64').toString('utf8'));
+    } catch (e) {
+      console.error('Service account parse xatolik:', e.message);
+    }
   }
-  if (!token) {
-    console.log('FCM token yo\'q — push yuborilmadi');
-    return;
+  // Yoki fayl yo'lidan
+  const path = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+  if (path) {
+    try {
+      return require(path);
+    } catch (e) {
+      console.error('Service account fayl xatolik:', e.message);
+    }
   }
+  return null;
+}
 
-  const payload = JSON.stringify({
-    to: token,
-    notification: { title, body, sound: 'default' },
-    data,
-    priority: 'high',
-    android: { priority: 'HIGH', notification: { sound: 'default', channel_id: 'gilam_orders' } },
+// OAuth2 access token olish
+async function getAccessToken() {
+  const sa = getServiceAccount();
+  if (!sa) throw new Error('Firebase service account topilmadi');
+
+  const auth = new GoogleAuth({
+    credentials: sa,
+    scopes: ['https://www.googleapis.com/auth/firebase.messaging'],
   });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  return token.token;
+}
 
-  return new Promise((resolve, reject) => {
+// FCM V1 API orqali push yuborish
+async function sendPush(fcmToken, title, body, data = {}) {
+  if (!fcmToken) {
+    console.log('FCM: token yo\'q — push yuborilmadi');
+    return;
+  }
+
+  let accessToken;
+  try {
+    accessToken = await getAccessToken();
+  } catch (e) {
+    console.error('FCM access token xatolik:', e.message);
+    return;
+  }
+
+  const message = {
+    message: {
+      token: fcmToken,
+      notification: { title, body },
+      data: Object.fromEntries(
+        Object.entries(data).map(([k, v]) => [k, String(v)])
+      ),
+      android: {
+        priority: 'HIGH',
+        notification: {
+          sound: 'default',
+          channel_id: 'gilam_orders',
+        },
+      },
+    },
+  };
+
+  const payload = JSON.stringify(message);
+
+  return new Promise((resolve) => {
     const req = https.request({
       hostname: 'fcm.googleapis.com',
-      path: '/fcm/send',
+      path: `/v1/projects/${PROJECT_ID}/messages:send`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `key=${FCM_SERVER_KEY}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Length': Buffer.byteLength(payload),
       },
     }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+      let d = '';
+      res.on('data', c => d += c);
       res.on('end', () => {
-        console.log('FCM natija:', res.statusCode, data);
-        resolve(data);
+        if (res.statusCode === 200) {
+          console.log('✅ FCM V1 push yuborildi:', title);
+        } else {
+          console.error('❌ FCM V1 xatolik:', res.statusCode, d);
+        }
+        resolve(d);
       });
     });
-    req.on('error', (e) => {
-      console.error('FCM xatolik:', e.message);
-      resolve(null); // Xatolik bo'lsa ham davom etamiz
+    req.on('error', e => {
+      console.error('FCM so\'rov xatolik:', e.message);
+      resolve(null);
     });
     req.write(payload);
     req.end();
   });
 }
 
-/**
- * Haydovchiga olib kelish haqida xabar yuborish
- */
 async function notifyPickup(db, driverId, orderId, customerName, address) {
   const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(driverId);
   if (!user?.fcm_token) return;
-
   await sendPush(
     user.fcm_token,
     `📦 Yangi buyurtma #${String(orderId).padStart(4, '0')}`,
@@ -69,13 +115,9 @@ async function notifyPickup(db, driverId, orderId, customerName, address) {
   );
 }
 
-/**
- * Haydovchiga yetkazish haqida xabar yuborish
- */
 async function notifyDelivery(db, driverId, orderId, customerName, address) {
   const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(driverId);
   if (!user?.fcm_token) return;
-
   await sendPush(
     user.fcm_token,
     `✅ Gilam tayyor — yetkazish #${String(orderId).padStart(4, '0')}`,
