@@ -77,6 +77,18 @@ function initDb() {
     );
   `);
 
+  // Migrations — mavjud DB ga yangi ustunlar qo'shish
+  const migrations = [
+    "ALTER TABLE users ADD COLUMN fcm_token TEXT",
+    "ALTER TABLE orders ADD COLUMN collected_by INTEGER REFERENCES users(id)",
+    "ALTER TABLE orders ADD COLUMN collected_at TEXT",
+    "ALTER TABLE orders ADD COLUMN pickup_lat REAL",
+    "ALTER TABLE orders ADD COLUMN pickup_lng REAL",
+  ];
+  for (const sql of migrations) {
+    try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore
+  }
+
   // Seed users if empty
   const userCount = db.prepare('SELECT COUNT(*) as c FROM users').get().c;
   if (userCount === 0) {
