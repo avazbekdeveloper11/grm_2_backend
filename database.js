@@ -25,6 +25,7 @@ function initDb() {
       password TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin','worker','driver')),
       is_active INTEGER NOT NULL DEFAULT 1,
+      fcm_token TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 

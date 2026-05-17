@@ -82,4 +82,13 @@ router.put('/:id/activate', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// PUT /api/users/fcm-token
+router.put("/fcm-token", requireAuth, (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ error: "token talab qilinadi" });
+  const db = getDb();
+  db.prepare("UPDATE users SET fcm_token = ? WHERE id = ?").run(token, req.user.id);
+  res.json({ success: true });
+});
+
 module.exports = router;

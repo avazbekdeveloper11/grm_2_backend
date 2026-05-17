@@ -2,6 +2,7 @@ const express = require('express');
 const { getDb } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendReadyNotification } = require('../services/sms_service');
+const { notifyPickup, notifyDelivery } = require('../services/fcm_service');
 
 const router = express.Router();
 
@@ -142,11 +143,29 @@ router.put('/:id', requireAuth, async (req, res) => {
 
   const result = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 
-  // Send SMS when status changes to "tayyor"
+  // 1. SMS — tayyor holatida mijozga
   if (previousStatus !== 'tayyor' && newStatus === 'tayyor') {
     sendReadyNotification(result.phone, result.customer_name, db)
       .then((r) => console.log('SMS natija:', r))
       .catch((e) => console.error('SMS xatolik:', e));
+
+    // Push — yetkazish uchun tayinlangan haydovchiga
+    if (result.assigned_driver_id) {
+      notifyDelivery(db, result.assigned_driver_id, id,
+        result.customer_name, result.address)
+        .catch((e) => console.error('Push xatolik:', e));
+    }
+  }
+
+  // 2. Push — yangi haydovchi tayinlanganda (pickup uchun)
+  const prevDriverId = order.assigned_driver_id;
+  const newDriverId = assigned_driver_id !== undefined
+    ? (assigned_driver_id || null) : order.assigned_driver_id;
+
+  if (newDriverId && newDriverId !== prevDriverId &&
+      newStatus !== 'tayyor' && newStatus !== 'yetkazildi') {
+    notifyPickup(db, newDriverId, id, result.customer_name, result.address)
+      .catch((e) => console.error('Push xatolik:', e));
   }
 
   res.json(result);
