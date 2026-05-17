@@ -3,6 +3,7 @@ const { getDb } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendReadyNotification } = require('../services/sms_service');
 const { notifyPickup, notifyDelivery } = require('../services/fcm_service');
+const { broadcast } = require('../websocket');
 
 const router = express.Router();
 
@@ -96,6 +97,7 @@ router.post('/', requireAdmin, (req, res) => {
   );
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
+  broadcast('order_created', { order_id: order.id });
   res.status(201).json(order);
 });
 
@@ -168,6 +170,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       .catch((e) => console.error('Push xatolik:', e));
   }
 
+  broadcast('order_updated', { order_id: id, status: result.status });
   res.json(result);
 });
 
@@ -179,6 +182,7 @@ router.delete('/:id', requireAdmin, (req, res) => {
   if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
   db.prepare('DELETE FROM carpets WHERE order_id = ?').run(id);
   db.prepare('DELETE FROM orders WHERE id = ?').run(id);
+  broadcast('order_deleted', { order_id: id });
   res.json({ success: true });
 });
 
