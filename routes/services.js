@@ -1,0 +1,137 @@
+const express = require('express');
+const { getDb } = require('../database');
+const { requireAuth, requireAdmin } = require('../middleware/auth');
+
+const router = express.Router();
+
+// GET /api/services
+router.get('/', requireAuth, (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT * FROM services ORDER BY sort_order, id'
+  ).all();
+  res.json(rows);
+});
+
+// POST /api/services
+router.post('/', requireAdmin, (req, res) => {
+  const db = getDb();
+  const { name, unit_type, price_per_unit } = req.body;
+  if (!name || !unit_type || price_per_unit == null) {
+    return res.status(400).json({ error: "name, unit_type, price_per_unit talab qilinadi" });
+  }
+  if (!['sqm', 'piece'].includes(unit_type)) {
+    return res.status(400).json({ error: "unit_type: 'sqm' yoki 'piece'" });
+  }
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM services').get().m || 0;
+  const result = db.prepare(
+    'INSERT INTO services (name, unit_type, price_per_unit, sort_order) VALUES (?,?,?,?)'
+  ).run(name.trim(), unit_type, Number(price_per_unit), maxOrder + 1);
+  res.status(201).json(db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid));
+});
+
+// PUT /api/services/:id
+router.put('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(id);
+  if (!svc) return res.status(404).json({ error: 'Xizmat topilmadi' });
+  const { name, unit_type, price_per_unit, is_active } = req.body;
+  db.prepare(`
+    UPDATE services SET name=?, unit_type=?, price_per_unit=?, is_active=? WHERE id=?
+  `).run(
+    name ?? svc.name,
+    unit_type ?? svc.unit_type,
+    price_per_unit != null ? Number(price_per_unit) : svc.price_per_unit,
+    is_active != null ? (is_active ? 1 : 0) : svc.is_active,
+    id
+  );
+  res.json(db.prepare('SELECT * FROM services WHERE id = ?').get(id));
+});
+
+// DELETE /api/services/:id
+router.delete('/:id', requireAdmin, (req, res) => {
+  const db = getDb();
+  db.prepare('UPDATE services SET is_active = 0 WHERE id = ?').run(Number(req.params.id));
+  res.json({ success: true });
+});
+
+// ─── Order items ───────────────────────────────────────────────────────────────
+
+// GET /api/services/order/:orderId/items
+router.get('/order/:orderId/items', requireAuth, (req, res) => {
+  const db = getDb();
+  const items = db.prepare(`
+    SELECT oi.*, s.name as service_name, s.unit_type
+    FROM order_items oi
+    JOIN services s ON s.id = oi.service_id
+    WHERE oi.order_id = ?
+    ORDER BY oi.id
+  `).all(Number(req.params.orderId));
+  res.json(items);
+});
+
+// POST /api/services/order/:orderId/items — dastavchi kiritadi
+router.post('/order/:orderId/items', requireAuth, (req, res) => {
+  const db = getDb();
+  const orderId = Number(req.params.orderId);
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
+  if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  const { items } = req.body; // [{service_id, quantity?, width?, height?, notes?}]
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'items massivi talab qilinadi' });
+  }
+
+  db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+
+  let totalPrice = 0;
+  const insertItem = db.prepare(`
+    INSERT INTO order_items (order_id, service_id, quantity, width, height, area, unit_price, total_price, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const item of items) {
+    const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(Number(item.service_id));
+    if (!svc) continue;
+
+    let area = null, qty = 0, itemTotal = 0;
+
+    if (svc.unit_type === 'sqm') {
+      const w = Number(item.width) || 0;
+      const h = Number(item.height) || 0;
+      area = w * h;
+      qty = area;
+      itemTotal = area * svc.price_per_unit;
+    } else {
+      qty = Number(item.quantity) || 0;
+      itemTotal = qty * svc.price_per_unit;
+    }
+
+    if (qty <= 0) continue;
+
+    insertItem.run(
+      orderId, svc.id, qty,
+      item.width ? Number(item.width) : null,
+      item.height ? Number(item.height) : null,
+      area,
+      svc.price_per_unit,
+      itemTotal,
+      item.notes || null
+    );
+    totalPrice += itemTotal;
+  }
+
+  // Update order total_price
+  db.prepare('UPDATE orders SET total_price = ? WHERE id = ?').run(totalPrice, orderId);
+
+  const savedItems = db.prepare(`
+    SELECT oi.*, s.name as service_name, s.unit_type
+    FROM order_items oi JOIN services s ON s.id = oi.service_id
+    WHERE oi.order_id = ?
+  `).all(orderId);
+
+  res.status(201).json({ items: savedItems, total_price: totalPrice });
+});
+
+module.exports = router;

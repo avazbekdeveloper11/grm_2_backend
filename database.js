@@ -67,6 +67,32 @@ function initDb() {
       value TEXT NOT NULL
     );
 
+    -- Xizmatlar katalogi
+    CREATE TABLE IF NOT EXISTS services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      unit_type TEXT NOT NULL DEFAULT 'piece'
+        CHECK(unit_type IN ('sqm','piece')),
+      price_per_unit REAL NOT NULL DEFAULT 0,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- Buyurtma tarkibi (har bir xizmat)
+    CREATE TABLE IF NOT EXISTS order_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      service_id INTEGER NOT NULL REFERENCES services(id),
+      quantity REAL NOT NULL DEFAULT 0,
+      width REAL,
+      height REAL,
+      area REAL,
+      unit_price REAL NOT NULL DEFAULT 0,
+      total_price REAL NOT NULL DEFAULT 0,
+      notes TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS driver_settlements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       driver_id INTEGER NOT NULL REFERENCES users(id),
@@ -87,6 +113,20 @@ function initDb() {
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore
+  }
+
+  // Seed services if empty
+  const svcCount = db.prepare('SELECT COUNT(*) as c FROM services').get().c;
+  if (svcCount === 0) {
+    const svc = db.prepare(
+      'INSERT INTO services (name, unit_type, price_per_unit, sort_order) VALUES (?,?,?,?)'
+    );
+    svc.run('Gilam',    'sqm',   15000, 1);
+    svc.run('Korpacha', 'sqm',   15000, 2);
+    svc.run('Yostiq',   'piece', 10000, 3);
+    svc.run('Korpa',    'piece', 60000, 4);
+    svc.run('Adyol',    'piece', 50000, 5);
+    console.log('✓ Standart xizmatlar qo\'shildi');
   }
 
   // Seed users if empty
