@@ -103,6 +103,9 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
       area = w * h;
       qty = area;
       itemTotal = area * svc.price_per_unit;
+    } else if (svc.unit_type === 'meter') {
+      qty = Number(item.quantity) || 0;
+      itemTotal = qty * svc.price_per_unit;
     } else {
       qty = Number(item.quantity) || 0;
       itemTotal = qty * svc.price_per_unit;
