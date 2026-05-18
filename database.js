@@ -126,6 +126,7 @@ function initDb() {
 
   if (!constraintOk) {
     db.prepare('PRAGMA foreign_keys=OFF').run();
+    try { db.prepare('DROP TABLE IF EXISTS services_new').run(); } catch (_) {}
     db.prepare(`
       CREATE TABLE services_new (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,7 +135,8 @@ function initDb() {
                         CHECK(unit_type IN ('sqm','piece','meter')),
         price_per_unit REAL NOT NULL DEFAULT 0,
         is_active     INTEGER NOT NULL DEFAULT 1,
-        sort_order    INTEGER NOT NULL DEFAULT 0
+        sort_order    INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT DEFAULT (datetime('now'))
       )
     `).run();
     db.prepare('INSERT INTO services_new SELECT * FROM services').run();
