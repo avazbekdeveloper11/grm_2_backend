@@ -75,4 +75,68 @@ router.post('/sms-test', requireAdmin, async (req, res) => {
   }
 });
 
+// POST /api/settings/fcm-test — FCM notification test
+router.post('/fcm-test', requireAdmin, async (req, res) => {
+  const { user_id } = req.body;
+  const db = getDb();
+
+  const envB64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  const envProject = process.env.FIREBASE_PROJECT_ID;
+
+  if (!envB64) {
+    return res.status(500).json({
+      error: 'FIREBASE_SERVICE_ACCOUNT_B64 Coolify da sozlanmagan!',
+      hint: 'Coolify → grm_backend → Environment Variables ga 'qo'shing'
+    });
+  }
+
+  const user = user_id
+    ? db.prepare('SELECT name, fcm_token FROM users WHERE id = ?').get(Number(user_id))
+    : null;
+
+  if (!user?.fcm_token) {
+    return res.status(400).json({ error: 'Bu foydalanuvchida FCM token yo'q' });
+  }
+
+  const { sendPush } = require('../services/fcm_service');
+  try {
+    await sendPush(user.fcm_token, '🔔 Test xabar', user.name + ' ga test notification', { type: 'test' });
+    res.json({ success: true, message: user.name + ' ga notification yuborildi' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 module.exports = router;
+
+// POST /api/settings/fcm-test — FCM notification test
+router.post('/fcm-test', requireAdmin, async (req, res) => {
+  const { user_id } = req.body;
+  const db = getDb();
+
+  const envB64 = process.env.FIREBASE_SERVICE_ACCOUNT_B64;
+  const envProject = process.env.FIREBASE_PROJECT_ID;
+
+  if (!envB64) {
+    return res.status(500).json({
+      error: 'FIREBASE_SERVICE_ACCOUNT_B64 Coolify da sozlanmagan!',
+      hint: 'Coolify → grm_backend → Environment Variables ga qo\'shing'
+    });
+  }
+
+  const user = user_id
+    ? db.prepare('SELECT name, fcm_token FROM users WHERE id = ?').get(Number(user_id))
+    : null;
+
+  if (!user?.fcm_token) {
+    return res.status(400).json({ error: 'Bu foydalanuvchida FCM token yo\'q' });
+  }
+
+  const { sendPush } = require('../services/fcm_service');
+  try {
+    await sendPush(user.fcm_token, '🔔 Test xabar', `${user.name} ga test notification`, { type: 'test' });
+    res.json({ success: true, message: `${user.name} ga notification yuborildi` });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
