@@ -54,14 +54,15 @@ router.get('/', requireAuth, (req, res) => {
   }
   // Har bir order uchun items_summary qo'shamiz
   const itemsQuery = db.prepare(`
-    SELECT order_id,
-      SUM(CASE WHEN unit_type='sqm'   THEN area   ELSE 0 END) as total_sqm,
-      SUM(CASE WHEN unit_type='meter' THEN quantity ELSE 0 END) as total_meter,
-      SUM(CASE WHEN unit_type='piece' THEN quantity ELSE 0 END) as total_piece,
+    SELECT oi.order_id,
+      SUM(CASE WHEN s.unit_type='sqm'   THEN oi.area     ELSE 0 END) as total_sqm,
+      SUM(CASE WHEN s.unit_type='meter' THEN oi.quantity  ELSE 0 END) as total_meter,
+      SUM(CASE WHEN s.unit_type='piece' THEN oi.quantity  ELSE 0 END) as total_piece,
       COUNT(*) as items_count
-    FROM order_items
-    WHERE order_id IN (${orders.map(() => '?').join(',') || '0'})
-    GROUP BY order_id
+    FROM order_items oi
+    JOIN services s ON s.id = oi.service_id
+    WHERE oi.order_id IN (${orders.map(() => '?').join(',') || '0'})
+    GROUP BY oi.order_id
   `);
   const summaries = orders.length > 0
     ? itemsQuery.all(...orders.map(o => o.id))
