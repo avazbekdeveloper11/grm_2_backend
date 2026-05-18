@@ -52,7 +52,28 @@ router.get('/', requireAuth, (req, res) => {
       ORDER BY o.created_at DESC
     `).all();
   }
-  res.json(orders);
+  // Har bir order uchun items_summary qo'shamiz
+  const itemsQuery = db.prepare(`
+    SELECT order_id,
+      SUM(CASE WHEN unit_type='sqm'   THEN area   ELSE 0 END) as total_sqm,
+      SUM(CASE WHEN unit_type='meter' THEN quantity ELSE 0 END) as total_meter,
+      SUM(CASE WHEN unit_type='piece' THEN quantity ELSE 0 END) as total_piece,
+      COUNT(*) as items_count
+    FROM order_items
+    WHERE order_id IN (${orders.map(() => '?').join(',') || '0'})
+    GROUP BY order_id
+  `);
+  const summaries = orders.length > 0
+    ? itemsQuery.all(...orders.map(o => o.id))
+    : [];
+  const summaryMap = {};
+  for (const s of summaries) summaryMap[s.order_id] = s;
+
+  const result = orders.map(o => ({
+    ...o,
+    items_summary: summaryMap[o.id] || null,
+  }));
+  res.json(result);
 });
 
 // GET /api/orders/:id
