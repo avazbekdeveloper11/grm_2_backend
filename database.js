@@ -116,7 +116,6 @@ function initDb() {
   }
 
   // services.unit_type CHECK constraintini 'meter' qo'llab-quvvatlash uchun yangilash
-  const hasMeters = db.prepare("SELECT COUNT(*) as c FROM services WHERE unit_type='meter'").get().c;
   const constraintOk = (() => {
     try {
       db.prepare("INSERT INTO services (name, unit_type, price_per_unit, sort_order) VALUES ('__test__','meter',1,999)").run();
@@ -126,9 +125,8 @@ function initDb() {
   })();
 
   if (!constraintOk) {
-    db.exec(`
-      PRAGMA foreign_keys=OFF;
-      BEGIN;
+    db.prepare('PRAGMA foreign_keys=OFF').run();
+    db.prepare(`
       CREATE TABLE services_new (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         name          TEXT NOT NULL,
@@ -137,13 +135,12 @@ function initDb() {
         price_per_unit REAL NOT NULL DEFAULT 0,
         is_active     INTEGER NOT NULL DEFAULT 1,
         sort_order    INTEGER NOT NULL DEFAULT 0
-      );
-      INSERT INTO services_new SELECT * FROM services;
-      DROP TABLE services;
-      ALTER TABLE services_new RENAME TO services;
-      COMMIT;
-      PRAGMA foreign_keys=ON;
-    `);
+      )
+    `).run();
+    db.prepare('INSERT INTO services_new SELECT * FROM services').run();
+    db.prepare('DROP TABLE services').run();
+    db.prepare('ALTER TABLE services_new RENAME TO services').run();
+    db.prepare('PRAGMA foreign_keys=ON').run();
     console.log("✓ services.unit_type: 'meter' qo'shildi");
   }
 
