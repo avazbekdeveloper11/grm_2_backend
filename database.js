@@ -115,6 +115,38 @@ function initDb() {
     try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore
   }
 
+  // services.unit_type CHECK constraintini 'meter' qo'llab-quvvatlash uchun yangilash
+  const hasMeters = db.prepare("SELECT COUNT(*) as c FROM services WHERE unit_type='meter'").get().c;
+  const constraintOk = (() => {
+    try {
+      db.prepare("INSERT INTO services (name, unit_type, price_per_unit, sort_order) VALUES ('__test__','meter',1,999)").run();
+      db.prepare("DELETE FROM services WHERE name='__test__'").run();
+      return true;
+    } catch (_) { return false; }
+  })();
+
+  if (!constraintOk) {
+    db.exec(`
+      PRAGMA foreign_keys=OFF;
+      BEGIN;
+      CREATE TABLE services_new (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        name          TEXT NOT NULL,
+        unit_type     TEXT NOT NULL DEFAULT 'piece'
+                        CHECK(unit_type IN ('sqm','piece','meter')),
+        price_per_unit REAL NOT NULL DEFAULT 0,
+        is_active     INTEGER NOT NULL DEFAULT 1,
+        sort_order    INTEGER NOT NULL DEFAULT 0
+      );
+      INSERT INTO services_new SELECT * FROM services;
+      DROP TABLE services;
+      ALTER TABLE services_new RENAME TO services;
+      COMMIT;
+      PRAGMA foreign_keys=ON;
+    `);
+    console.log("✓ services.unit_type: 'meter' qo'shildi");
+  }
+
   // Seed services if empty
   const svcCount = db.prepare('SELECT COUNT(*) as c FROM services').get().c;
   if (svcCount === 0) {
