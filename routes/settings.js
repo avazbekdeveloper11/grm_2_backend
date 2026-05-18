@@ -86,7 +86,7 @@ router.post('/fcm-test', requireAdmin, async (req, res) => {
   if (!envB64) {
     return res.status(500).json({
       error: 'FIREBASE_SERVICE_ACCOUNT_B64 Coolify da sozlanmagan!',
-      hint: 'Coolify → grm_backend → Environment Variables ga 'qo'shing'
+      hint: "Coolify → grm_backend → Environment Variables ga qo'shing"
     });
   }
 
@@ -95,7 +95,7 @@ router.post('/fcm-test', requireAdmin, async (req, res) => {
     : null;
 
   if (!user?.fcm_token) {
-    return res.status(400).json({ error: 'Bu foydalanuvchida FCM token yo'q' });
+    return res.status(400).json({ error: "Bu foydalanuvchida FCM token yo'q" });
   }
 
   const { sendPush } = require('../services/fcm_service');
