@@ -18,16 +18,18 @@ router.post('/', requireAdmin, (req, res) => {
     'DELETE FROM driver_settlements',
     'DELETE FROM carpets',
     'DELETE FROM orders',
+    'DELETE FROM services',
     "DELETE FROM users WHERE role != 'admin'",
-    'UPDATE users SET fcm_token = NULL WHERE role = \'admin\'',
-    "DELETE FROM sqlite_sequence WHERE name IN ('orders','order_items','carpets','driver_settlements','users')",
+    "UPDATE users SET fcm_token = NULL, name = 'Administrator', login = 'admin', password = 'admin123' WHERE role = 'admin'",
+    "DELETE FROM settings",
+    "DELETE FROM sqlite_sequence",
   ];
 
   for (const sql of stmts) {
     try { db.prepare(sql).run(); } catch (_) {}
   }
 
-  res.json({ success: true, message: "DB tozalandi. Faqat admin qoldi." });
+  res.json({ success: true, message: "DB to'liq tozalandi. Faqat admin (admin/admin123) qoldi." });
 });
 
 module.exports = router;
