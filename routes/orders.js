@@ -194,7 +194,7 @@ router.post('/:id/carpets', requireAuth, (req, res) => {
   if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
 
   const { carpets, pickup_lat, pickup_lng } = req.body;
-  if (!Array.isArray(carpets) || carpets.length === 0) {
+  if (!Array.isArray(carpets)) {
     return res.status(400).json({ error: 'carpets massivi talab qilinadi' });
   }
 
