@@ -32,4 +32,12 @@ router.post('/', requireAdmin, (req, res) => {
   res.json({ success: true, message: "DB to'liq tozalandi. Faqat admin (admin/admin123) qoldi." });
 });
 
+// POST /api/reset/sessions — hamma tokenlarni expire qilish
+router.post('/sessions', requireAdmin, (req, res) => {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('token_invalidated_at', ?)").run(String(now));
+  res.json({ success: true, message: "Barcha sessiyalar tugatildi. Foydalanuvchilar qayta login qilishi kerak." });
+});
+
 module.exports = router;
