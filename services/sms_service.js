@@ -97,7 +97,7 @@ async function sendReadyNotification(phone, customerName, db) {
       .prepare("SELECT value FROM settings WHERE key = 'sms_template'")
       .get();
     const template = templateRow?.value ||
-      "Hurmatli {ism}, buyumlaringiz tayyor! Yetkazib berish uchun bog'lanamiz. Gilam yuvish xizmati.";
+      "Hurmatli mijoz, buyumlaringiz tayyor! Yetkazib berish uchun bog'lanamiz. Gilam yuvish xizmati.";
     const message = template.replace(/\{ism\}/gi, customerName);
 
     await sendSms(phone, message, token);
