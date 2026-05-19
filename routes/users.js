@@ -75,6 +75,24 @@ router.delete('/:id', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// PUT /api/users/password — o'z parolini o'zgartirish (barcha rollar)
+router.put('/password', requireAuth, (req, res) => {
+  const { current_password, new_password } = req.body;
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'Joriy va yangi parol talab qilinadi' });
+  }
+  if (new_password.length < 4) {
+    return res.status(400).json({ error: 'Yangi parol kamida 4 ta belgidan iborat bo\'lsin' });
+  }
+  const db = getDb();
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user || user.password !== current_password) {
+    return res.status(400).json({ error: 'Joriy parol noto\'g\'ri' });
+  }
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(new_password, req.user.id);
+  res.json({ success: true });
+});
+
 // PUT /api/users/fcm-token — /:id dan OLDIN bo'lishi shart!
 router.put('/fcm-token', requireAuth, (req, res) => {
   const { token } = req.body;
