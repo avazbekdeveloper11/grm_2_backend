@@ -26,7 +26,7 @@ router.get('/', requireAuth, (req, res) => {
 // PUT /api/settings
 router.put('/', requireAdmin, (req, res) => {
   const db = getDb();
-  const { price_per_sqm, eskiz_email, eskiz_password } = req.body;
+  const { price_per_sqm, eskiz_email, eskiz_password, sms_template } = req.body;
 
   if (price_per_sqm !== undefined) {
     const val = Number(price_per_sqm);
@@ -42,6 +42,13 @@ router.put('/', requireAdmin, (req, res) => {
 
   if (eskiz_password !== undefined) {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('eskiz_password', ?)").run(eskiz_password);
+  }
+
+  if (sms_template !== undefined) {
+    const t = sms_template.trim();
+    if (t.length > 0) {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('sms_template', ?)").run(t);
+    }
   }
 
   // Return updated settings

@@ -93,9 +93,12 @@ async function sendReadyNotification(phone, customerName, db) {
 
     const token = await getEskizToken(emailRow.value, passRow.value);
 
-    const message =
-      `Hurmatli ${customerName}, gilamingiz yuvib tayyor bo'ldi! ` +
-      `Yetkazib berish uchun bog'lanamiz. Gilam tozalash xizmati.`;
+    const templateRow = db
+      .prepare("SELECT value FROM settings WHERE key = 'sms_template'")
+      .get();
+    const template = templateRow?.value ||
+      "Hurmatli {ism}, buyumlaringiz tayyor! Yetkazib berish uchun bog'lanamiz. Gilam yuvish xizmati.";
+    const message = template.replace(/\{ism\}/gi, customerName);
 
     await sendSms(phone, message, token);
     console.log(`SMS yuborildi: ${phone}`);
