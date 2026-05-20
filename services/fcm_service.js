@@ -65,7 +65,7 @@ async function sendPush(fcmToken, title, body, data = {}) {
         priority: 'HIGH',
         notification: {
           sound: 'order_notification',
-          channel_id: 'gilam_orders',
+          channel_id: 'gilam_orders_v2',
         },
       },
       apns: {
