@@ -167,11 +167,17 @@ router.put('/:id', requireAuth, async (req, res) => {
 
   const result = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
 
-  // 1. SMS — tayyor holatida mijozga
+  // 1. SMS — tayyor holatida mijozga (sms_enabled=1 bo'lsagina)
   if (previousStatus !== 'tayyor' && newStatus === 'tayyor') {
-    sendReadyNotification(result.phone, result.customer_name, db)
-      .then((r) => console.log('SMS natija:', r))
-      .catch((e) => console.error('SMS xatolik:', e));
+    const smsEnabledRow = db.prepare("SELECT value FROM settings WHERE key='sms_enabled'").get();
+    const smsEnabled = !smsEnabledRow || smsEnabledRow.value !== '0'; // default: yoqiq
+    if (smsEnabled) {
+      sendReadyNotification(result.phone, result.customer_name, db)
+        .then((r) => console.log('SMS natija:', r))
+        .catch((e) => console.error('SMS xatolik:', e));
+    } else {
+      console.log('SMS o\'chirilgan, yuborilmadi');
+    }
 
     // Push — yetkazish uchun tayinlangan haydovchiga
     if (result.assigned_driver_id) {

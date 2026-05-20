@@ -110,6 +110,10 @@ function initDb() {
     "ALTER TABLE orders ADD COLUMN collected_at TEXT",
     "ALTER TABLE orders ADD COLUMN pickup_lat REAL",
     "ALTER TABLE orders ADD COLUMN pickup_lng REAL",
+    "ALTER TABLE orders ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE services ADD COLUMN discount_enabled INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE services ADD COLUMN discount_min_qty REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE services ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore

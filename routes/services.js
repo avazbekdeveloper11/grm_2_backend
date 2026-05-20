@@ -16,17 +16,25 @@ router.get('/', requireAuth, (req, res) => {
 // POST /api/services
 router.post('/', requireAdmin, (req, res) => {
   const db = getDb();
-  const { name, unit_type, price_per_unit } = req.body;
+  const { name, unit_type, price_per_unit,
+          discount_enabled, discount_min_qty, discount_amount } = req.body;
   if (!name || !unit_type || price_per_unit == null) {
     return res.status(400).json({ error: "name, unit_type, price_per_unit talab qilinadi" });
   }
-  if (!['sqm', 'piece'].includes(unit_type)) {
-    return res.status(400).json({ error: "unit_type: 'sqm' yoki 'piece'" });
+  if (!['sqm', 'piece', 'meter'].includes(unit_type)) {
+    return res.status(400).json({ error: "unit_type: 'sqm', 'meter' yoki 'piece' bo'lishi kerak" });
   }
   const maxOrder = db.prepare('SELECT MAX(sort_order) as m FROM services').get().m || 0;
   const result = db.prepare(
-    'INSERT INTO services (name, unit_type, price_per_unit, sort_order) VALUES (?,?,?,?)'
-  ).run(name.trim(), unit_type, Number(price_per_unit), maxOrder + 1);
+    `INSERT INTO services (name, unit_type, price_per_unit, sort_order,
+       discount_enabled, discount_min_qty, discount_amount)
+     VALUES (?,?,?,?,?,?,?)`
+  ).run(
+    name.trim(), unit_type, Number(price_per_unit), maxOrder + 1,
+    discount_enabled ? 1 : 0,
+    discount_min_qty != null ? Number(discount_min_qty) : 0,
+    discount_amount != null ? Number(discount_amount) : 0,
+  );
   res.status(201).json(db.prepare('SELECT * FROM services WHERE id = ?').get(result.lastInsertRowid));
 });
 
@@ -36,14 +44,21 @@ router.put('/:id', requireAdmin, (req, res) => {
   const id = Number(req.params.id);
   const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(id);
   if (!svc) return res.status(404).json({ error: 'Xizmat topilmadi' });
-  const { name, unit_type, price_per_unit, is_active } = req.body;
+  const { name, unit_type, price_per_unit, is_active,
+          discount_enabled, discount_min_qty, discount_amount } = req.body;
   db.prepare(`
-    UPDATE services SET name=?, unit_type=?, price_per_unit=?, is_active=? WHERE id=?
+    UPDATE services
+    SET name=?, unit_type=?, price_per_unit=?, is_active=?,
+        discount_enabled=?, discount_min_qty=?, discount_amount=?
+    WHERE id=?
   `).run(
     name ?? svc.name,
     unit_type ?? svc.unit_type,
     price_per_unit != null ? Number(price_per_unit) : svc.price_per_unit,
     is_active != null ? (is_active ? 1 : 0) : svc.is_active,
+    discount_enabled != null ? (discount_enabled ? 1 : 0) : svc.discount_enabled,
+    discount_min_qty != null ? Number(discount_min_qty) : svc.discount_min_qty,
+    discount_amount != null ? Number(discount_amount) : svc.discount_amount,
     id
   );
   res.json(db.prepare('SELECT * FROM services WHERE id = ?').get(id));
@@ -113,6 +128,13 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
 
     if (qty <= 0) continue;
 
+    // Per-service discount
+    let itemDiscount = 0;
+    if (svc.discount_enabled && svc.discount_min_qty > 0 && qty >= svc.discount_min_qty) {
+      itemDiscount = svc.discount_amount || 0;
+      itemTotal = Math.max(0, itemTotal - itemDiscount);
+    }
+
     insertItem.run(
       orderId, svc.id, qty,
       item.width ? Number(item.width) : null,
@@ -125,8 +147,29 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
     totalPrice += itemTotal;
   }
 
+  // Discount hisoblash
+  const discEnabledRow = db.prepare("SELECT value FROM settings WHERE key='discount_enabled'").get();
+  const discMinRow = db.prepare("SELECT value FROM settings WHERE key='discount_min_sqm'").get();
+  const discAmtRow = db.prepare("SELECT value FROM settings WHERE key='discount_amount'").get();
+  const discEnabled = discEnabledRow?.value === '1';
+  const discMinSqm = discMinRow ? Number(discMinRow.value) : 0;
+  const discAmt = discAmtRow ? Number(discAmtRow.value) : 0;
+
+  // Jami sqm maydonni hisoblash (faqat sqm turidagilar)
+  const totalSqm = db.prepare(`
+    SELECT COALESCE(SUM(oi.area), 0) as total FROM order_items oi
+    JOIN services s ON s.id = oi.service_id
+    WHERE oi.order_id = ? AND s.unit_type = 'sqm'
+  `).get(orderId).total;
+
+  let discountAmount = 0;
+  if (discEnabled && discMinSqm > 0 && totalSqm >= discMinSqm) {
+    discountAmount = discAmt;
+  }
+  const finalPrice = Math.max(0, totalPrice - discountAmount);
+
   // Update order total_price
-  db.prepare('UPDATE orders SET total_price = ? WHERE id = ?').run(totalPrice, orderId);
+  db.prepare('UPDATE orders SET total_price = ?, discount_amount = ? WHERE id = ?').run(finalPrice, discountAmount, orderId);
 
   const savedItems = db.prepare(`
     SELECT oi.*, s.name as service_name, s.unit_type
@@ -134,7 +177,7 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
     WHERE oi.order_id = ?
   `).all(orderId);
 
-  res.status(201).json({ items: savedItems, total_price: totalPrice });
+  res.status(201).json({ items: savedItems, total_price: finalPrice, discount_amount: discountAmount });
 });
 
 module.exports = router;
