@@ -20,11 +20,11 @@ router.get('/', requireAuth, (req, res) => {
   let users;
   if (role) {
     users = db
-      .prepare('SELECT id, name, login, role, is_active, created_at FROM users WHERE role = ? ORDER BY created_at DESC')
+      .prepare('SELECT id, name, login, role, is_active, created_at, fcm_token FROM users WHERE role = ? ORDER BY created_at DESC')
       .all(role);
   } else {
     users = db
-      .prepare('SELECT id, name, login, role, is_active, created_at FROM users ORDER BY created_at DESC')
+      .prepare('SELECT id, name, login, role, is_active, created_at, fcm_token FROM users ORDER BY created_at DESC')
       .all();
   }
   res.json(users);
