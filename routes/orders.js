@@ -2,7 +2,7 @@ const express = require('express');
 const { getDb } = require('../database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendReadyNotification } = require('../services/sms_service');
-const { notifyPickup, notifyDelivery } = require('../services/fcm_service');
+const { notifyPickup, notifyDelivery, notifyWorkerAssigned, notifyWorkerPickedUp } = require('../services/fcm_service');
 const { broadcast } = require('../websocket');
 
 const router = express.Router();
@@ -196,6 +196,24 @@ router.put('/:id', requireAuth, async (req, res) => {
       newStatus !== 'tayyor' && newStatus !== 'yetkazildi') {
     notifyPickup(db, newDriverId, id, result.customer_name, result.address)
       .catch((e) => console.error('Push xatolik:', e));
+  }
+
+  // 3. Push — yangi ishchi tayinlanganda
+  const prevWorkerId = order.assigned_worker_id;
+  const newWorkerId = assigned_worker_id !== undefined
+    ? (assigned_worker_id || null) : order.assigned_worker_id;
+
+  if (newWorkerId && newWorkerId !== prevWorkerId) {
+    notifyWorkerAssigned(db, newWorkerId, id, result.customer_name)
+      .catch((e) => console.error('Push xatolik:', e));
+  }
+
+  // 4. Push — gilam olib kelindi (yuvilyapti), ishchiga xabar
+  if (previousStatus !== 'yuvilyapti' && newStatus === 'yuvilyapti') {
+    if (result.assigned_worker_id) {
+      notifyWorkerPickedUp(db, result.assigned_worker_id, id, result.customer_name)
+        .catch((e) => console.error('Push xatolik:', e));
+    }
   }
 
   broadcast('order_updated', { order_id: id, status: result.status });

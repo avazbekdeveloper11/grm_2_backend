@@ -110,6 +110,7 @@ async function sendPush(fcmToken, title, body, data = {}) {
   });
 }
 
+// Haydovchiga: yangi olib kelish buyurtmasi
 async function notifyPickup(db, driverId, orderId, customerName, address) {
   const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(driverId);
   if (!user?.fcm_token) return;
@@ -121,15 +122,40 @@ async function notifyPickup(db, driverId, orderId, customerName, address) {
   );
 }
 
+// Haydovchiga: gilam tayyor, yetkazish kerak
 async function notifyDelivery(db, driverId, orderId, customerName, address) {
   const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(driverId);
   if (!user?.fcm_token) return;
   await sendPush(
     user.fcm_token,
-    `✅ Gilam tayyor — yetkazish #${String(orderId).padStart(4, '0')}`,
-    `${customerName} — ${address}`,
+    `🚗 Yetkazish #${String(orderId).padStart(4, '0')}`,
+    `Gilam tayyor — ${customerName} ga yetkazish kerak`,
     { type: 'delivery', order_id: String(orderId) }
   );
 }
 
-module.exports = { sendPush, notifyPickup, notifyDelivery };
+// Ishchiga: yangi zakaz tayinlandi
+async function notifyWorkerAssigned(db, workerId, orderId, customerName) {
+  const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(workerId);
+  if (!user?.fcm_token) return;
+  await sendPush(
+    user.fcm_token,
+    `🧺 Yangi zakaz #${String(orderId).padStart(4, '0')}`,
+    `${customerName} — gilam yuvish kerak`,
+    { type: 'worker_assigned', order_id: String(orderId) }
+  );
+}
+
+// Ishchiga: gilam olib kelindi, yuvish boshlash mumkin
+async function notifyWorkerPickedUp(db, workerId, orderId, customerName) {
+  const user = db.prepare('SELECT fcm_token FROM users WHERE id = ?').get(workerId);
+  if (!user?.fcm_token) return;
+  await sendPush(
+    user.fcm_token,
+    `✅ Gilam keldi #${String(orderId).padStart(4, '0')}`,
+    `${customerName} — gilam olib kelindi, yuvish mumkin`,
+    { type: 'worker_pickup', order_id: String(orderId) }
+  );
+}
+
+module.exports = { sendPush, notifyPickup, notifyDelivery, notifyWorkerAssigned, notifyWorkerPickedUp };
