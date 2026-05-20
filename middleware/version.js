@@ -1,4 +1,4 @@
-const MIN_VERSION = '1.0.8';
+const MIN_VERSION = '1.0.9';
 
 function parseVersion(v) {
   return (v || '0.0.0').split('.').map(Number);
