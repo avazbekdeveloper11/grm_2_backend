@@ -136,10 +136,16 @@ router.put('/:id', requireAuth, async (req, res) => {
     status, payment_status,
     assigned_worker_id, assigned_driver_id,
     notes, carpet_count, carpet_types,
+    manual_price,
   } = req.body;
 
   const previousStatus = order.status;
   const newStatus = status ?? order.status;
+
+  // manual_price faqat admin o'zgartira oladi
+  const newManualPrice = (req.user.role === 'admin' && manual_price !== undefined)
+    ? (manual_price === null || manual_price === '' ? null : Number(manual_price))
+    : order.manual_price;
 
   db.prepare(`
     UPDATE orders SET
@@ -147,7 +153,8 @@ router.put('/:id', requireAuth, async (req, res) => {
       pickup_date = ?, delivery_date = ?,
       status = ?, payment_status = ?,
       assigned_worker_id = ?, assigned_driver_id = ?,
-      notes = ?, carpet_count = ?, carpet_types = ?
+      notes = ?, carpet_count = ?, carpet_types = ?,
+      manual_price = ?
     WHERE id = ?
   `).run(
     customer_name ?? order.customer_name,
@@ -162,6 +169,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     notes !== undefined ? (notes || null) : order.notes,
     carpet_count ?? order.carpet_count,
     carpet_types !== undefined ? (carpet_types || null) : order.carpet_types,
+    newManualPrice,
     id
   );
 

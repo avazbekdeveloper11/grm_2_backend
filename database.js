@@ -46,6 +46,7 @@ function initDb() {
       carpet_count INTEGER NOT NULL DEFAULT 0,
       carpet_types TEXT,
       total_price REAL NOT NULL DEFAULT 0,
+      manual_price REAL,
       pickup_lat REAL,
       pickup_lng REAL,
       collected_by INTEGER REFERENCES users(id),
@@ -114,6 +115,7 @@ function initDb() {
     "ALTER TABLE services ADD COLUMN discount_enabled INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE services ADD COLUMN discount_min_qty REAL NOT NULL DEFAULT 0",
     "ALTER TABLE services ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN manual_price REAL",
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore
