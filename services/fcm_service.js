@@ -71,7 +71,7 @@ async function sendPush(fcmToken, title, body, data = {}) {
       apns: {
         headers: { 'apns-priority': '10' },
         payload: {
-          aps: { sound: 'order_notification.wav' },
+          aps: { sound: 'order_notification.mp3' },
         },
       },
     },
