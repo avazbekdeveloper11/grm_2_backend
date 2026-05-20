@@ -64,8 +64,14 @@ async function sendPush(fcmToken, title, body, data = {}) {
       android: {
         priority: 'HIGH',
         notification: {
-          sound: 'default',
+          sound: 'order_notification',
           channel_id: 'gilam_orders',
+        },
+      },
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: {
+          aps: { sound: 'order_notification.wav' },
         },
       },
     },
