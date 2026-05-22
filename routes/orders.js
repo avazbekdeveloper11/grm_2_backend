@@ -120,6 +120,18 @@ router.post('/', requireAdmin, (req, res) => {
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
   broadcast('order_created', { order_id: order.id });
+
+  // Yangi zakaz yaratilganda haydovchi tayinlangan bo'lsa — xabar yuborish
+  if (order.assigned_driver_id) {
+    notifyPickup(db, order.assigned_driver_id, order.id, order.customer_name, order.address)
+      .catch((e) => console.error('Push xatolik:', e));
+  }
+  // Ishchi tayinlangan bo'lsa — xabar yuborish
+  if (order.assigned_worker_id) {
+    notifyWorkerAssigned(db, order.assigned_worker_id, order.id, order.customer_name)
+      .catch((e) => console.error('Push xatolik:', e));
+  }
+
   res.status(201).json(order);
 });
 
