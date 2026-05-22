@@ -28,7 +28,8 @@ router.put('/', requireAdmin, (req, res) => {
   const db = getDb();
   const { price_per_sqm, eskiz_email, eskiz_password, sms_template,
           sms_enabled,
-          discount_enabled, discount_min_sqm, discount_amount } = req.body;
+          discount_enabled, discount_min_sqm, discount_amount,
+          discount_percentage, discount_step_sqm } = req.body;
 
   if (price_per_sqm !== undefined) {
     const val = Number(price_per_sqm);
@@ -70,6 +71,18 @@ router.put('/', requireAdmin, (req, res) => {
     const val = Number(discount_amount);
     if (!isNaN(val) && val >= 0) {
       db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('discount_amount', ?)").run(String(val));
+    }
+  }
+  if (discount_percentage !== undefined) {
+    const val = Number(discount_percentage);
+    if (!isNaN(val) && val >= 0 && val <= 100) {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('discount_percentage', ?)").run(String(val));
+    }
+  }
+  if (discount_step_sqm !== undefined) {
+    const val = Number(discount_step_sqm);
+    if (!isNaN(val) && val > 0) {
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('discount_step_sqm', ?)").run(String(val));
     }
   }
 
