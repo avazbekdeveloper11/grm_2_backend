@@ -1,4 +1,4 @@
-const MIN_VERSION = '1.1.8';
+const MIN_VERSION = '1.1.3';
 
 function parseVersion(v) {
   return (v || '0.0.0').split('.').map(Number);
@@ -19,7 +19,7 @@ function requireVersion(req, res, next) {
   if (req.path === '/login' || req.path === '/health') return next();
 
   const v = req.headers['x-app-version'];
-  if (!v || !isVersionOk(v)) {
+  if (v && !isVersionOk(v)) {
     return res.status(426).json({
       error: `Ilovangiz eskirgan. Yangi versiyani yuklab oling (minimum ${MIN_VERSION}).`,
       min_version: MIN_VERSION,
