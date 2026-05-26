@@ -102,38 +102,51 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
 
   db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
 
-  let totalPrice = 0;
   const insertItem = db.prepare(`
     INSERT INTO order_items (order_id, service_id, quantity, width, height, area, unit_price, total_price, notes)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
+  // 1-bosqich: barcha itemlarni skidkasiz saqlash va xizmat bo'yicha jami qty hisoblash
+  const rowsToInsert = [];
+  const serviceQtyMap = {}; // service_id -> jami qty
+
   for (const item of items) {
     const svc = db.prepare('SELECT * FROM services WHERE id = ?').get(Number(item.service_id));
     if (!svc) continue;
 
-    let area = null, qty = 0, itemTotal = 0;
+    let area = null, qty = 0, rawTotal = 0;
 
     if (svc.unit_type === 'sqm') {
       const w = Number(item.width) || 0;
       const h = Number(item.height) || 0;
       area = w * h;
       qty = area;
-      itemTotal = area * svc.price_per_unit;
+      rawTotal = area * svc.price_per_unit;
     } else if (svc.unit_type === 'meter') {
       qty = Number(item.quantity) || 0;
-      itemTotal = qty * svc.price_per_unit;
+      rawTotal = qty * svc.price_per_unit;
     } else {
       qty = Number(item.quantity) || 0;
-      itemTotal = qty * svc.price_per_unit;
+      rawTotal = qty * svc.price_per_unit;
     }
 
     if (qty <= 0) continue;
 
-    // Per-service discount (discount_amount = foiz, masalan 5 = 5%)
-    if (svc.discount_enabled && svc.discount_min_qty > 0 && qty >= svc.discount_min_qty) {
+    serviceQtyMap[svc.id] = (serviceQtyMap[svc.id] || 0) + qty;
+    rowsToInsert.push({ svc, qty, area, rawTotal, item });
+  }
+
+  // 2-bosqich: xizmat bo'yicha JAMI qty asosida discount qo'llab saqlash
+  let totalPrice = 0;
+  for (const { svc, qty, area, rawTotal, item } of rowsToInsert) {
+    const totalQtyForService = serviceQtyMap[svc.id] || qty;
+    let itemTotal = rawTotal;
+
+    // Per-service discount: jami qty threshold dan oshsa — bu itemga ham discount
+    if (svc.discount_enabled && svc.discount_min_qty > 0 && totalQtyForService >= svc.discount_min_qty) {
       const pct = svc.discount_amount || 0;
-      itemTotal = Math.max(0, itemTotal * (1 - pct / 100));
+      itemTotal = Math.max(0, rawTotal * (1 - pct / 100));
     }
 
     insertItem.run(
