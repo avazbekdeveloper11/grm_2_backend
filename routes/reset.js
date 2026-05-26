@@ -32,6 +32,30 @@ router.post('/', requireAdmin, (req, res) => {
   res.json({ success: true, message: "DB to'liq tozalandi. Faqat admin (admin/admin123) qoldi." });
 });
 
+// POST /api/reset/orders — faqat buyurtmalarni tozalash (xodimlar, narxlar qoladi)
+router.post('/orders', requireAdmin, (req, res) => {
+  const { confirm } = req.body;
+  if (confirm !== 'BUYURTMALAR') {
+    return res.status(400).json({ error: "confirm: 'BUYURTMALAR' yuborish kerak" });
+  }
+
+  const db = getDb();
+
+  const stmts = [
+    'DELETE FROM order_items',
+    'DELETE FROM driver_settlements',
+    'DELETE FROM carpets',
+    'DELETE FROM orders',
+    "DELETE FROM sqlite_sequence WHERE name IN ('orders','carpets','order_items','driver_settlements')",
+  ];
+
+  for (const sql of stmts) {
+    try { db.prepare(sql).run(); } catch (_) {}
+  }
+
+  res.json({ success: true, message: "Barcha buyurtmalar tozalandi. ID 1 dan boshlanadi." });
+});
+
 // POST /api/reset/sessions — hamma tokenlarni expire qilish
 router.post('/sessions', requireAdmin, (req, res) => {
   const db = getDb();
