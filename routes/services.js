@@ -77,7 +77,9 @@ router.delete('/:id', requireAdmin, (req, res) => {
 router.get('/order/:orderId/items', requireAuth, (req, res) => {
   const db = getDb();
   const items = db.prepare(`
-    SELECT oi.*, s.name as service_name, s.unit_type
+    SELECT oi.*,
+           s.name as service_name, s.unit_type,
+           s.discount_enabled, s.discount_min_qty, s.discount_amount as service_discount_pct
     FROM order_items oi
     JOIN services s ON s.id = oi.service_id
     WHERE oi.order_id = ?
