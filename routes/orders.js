@@ -440,12 +440,15 @@ router.get('/drivers/collections', requireAuth, (req, res) => {
     params.push(date);
   }
 
-  // Per-driver totals
+  // Per-driver totals (order_items mavjud bo'lsa ulardan hisoblash)
   const rows = db.prepare(`
     SELECT
       u.id, u.name,
       COUNT(o.id) as order_count,
-      SUM(o.total_price) as total_collected,
+      SUM(COALESCE(
+        (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
+        o.total_price
+      )) as total_collected,
       GROUP_CONCAT(o.id) as order_ids
     FROM users u
     LEFT JOIN orders o ON o.collected_by = u.id AND ${where}
