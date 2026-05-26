@@ -128,11 +128,10 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
 
     if (qty <= 0) continue;
 
-    // Per-service discount
-    let itemDiscount = 0;
+    // Per-service discount (discount_amount = foiz, masalan 5 = 5%)
     if (svc.discount_enabled && svc.discount_min_qty > 0 && qty >= svc.discount_min_qty) {
-      itemDiscount = svc.discount_amount || 0;
-      itemTotal = Math.max(0, itemTotal - itemDiscount);
+      const pct = svc.discount_amount || 0;
+      itemTotal = Math.max(0, itemTotal * (1 - pct / 100));
     }
 
     insertItem.run(
@@ -147,13 +146,13 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
     totalPrice += itemTotal;
   }
 
-  // Discount hisoblash
+  // Global discount hisoblash
   const discEnabledRow = db.prepare("SELECT value FROM settings WHERE key='discount_enabled'").get();
-  const discMinRow = db.prepare("SELECT value FROM settings WHERE key='discount_min_sqm'").get();
-  const discAmtRow = db.prepare("SELECT value FROM settings WHERE key='discount_amount'").get();
-  const discEnabled = discEnabledRow?.value === '1';
-  const discMinSqm = discMinRow ? Number(discMinRow.value) : 0;
-  const discAmt = discAmtRow ? Number(discAmtRow.value) : 0;
+  const discMinRow    = db.prepare("SELECT value FROM settings WHERE key='discount_min_sqm'").get();
+  const discPctRow    = db.prepare("SELECT value FROM settings WHERE key='discount_percentage'").get();
+  const discEnabled   = discEnabledRow?.value === '1';
+  const discMinSqm    = discMinRow ? Number(discMinRow.value) : 0;
+  const discPct       = discPctRow ? Number(discPctRow.value) : 0; // foiz (masalan 5 = 5%)
 
   // Jami sqm maydonni hisoblash (faqat sqm turidagilar)
   const totalSqm = db.prepare(`
@@ -163,8 +162,8 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
   `).get(orderId).total;
 
   let discountAmount = 0;
-  if (discEnabled && discMinSqm > 0 && totalSqm >= discMinSqm) {
-    discountAmount = discAmt;
+  if (discEnabled && discMinSqm > 0 && discPct > 0 && totalSqm >= discMinSqm) {
+    discountAmount = totalPrice * discPct / 100;
   }
   const finalPrice = Math.max(0, totalPrice - discountAmount);
 
