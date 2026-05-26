@@ -252,6 +252,24 @@ router.delete('/:id', requireAdmin, (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/orders/:id/advance-payment
+router.post('/:id/advance-payment', requireAuth, (req, res) => {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  const advance = Number(req.body.advance_payment);
+  if (isNaN(advance) || advance < 0) {
+    return res.status(400).json({ error: 'Noto\'g\'ri summa' });
+  }
+
+  db.prepare('UPDATE orders SET advance_payment = ? WHERE id = ?').run(advance, id);
+  const result = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  broadcast('order_updated', { order_id: id, status: result.status });
+  res.json(result);
+});
+
 // POST /api/orders/:id/carpets
 router.post('/:id/carpets', requireAuth, (req, res) => {
   const db = getDb();
