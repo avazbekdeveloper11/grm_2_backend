@@ -341,6 +341,26 @@ router.post('/:id/collect', requireAuth, (req, res) => {
   res.json(updated);
 });
 
+// POST /api/orders/:id/debt  — haydovchi qarzga yetkazib berdi
+router.post('/:id/debt', requireAuth, (req, res) => {
+  const db = getDb();
+  const id = Number(req.params.id);
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  const collectorId = req.user.id;
+  const now = new Date().toISOString();
+
+  db.prepare(`
+    UPDATE orders
+    SET payment_status = 'qarz', collected_by = ?, collected_at = ?
+    WHERE id = ?
+  `).run(collectorId, now, id);
+
+  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  res.json(updated);
+});
+
 // GET /api/drivers/collections?date=2026-05-17  — admin: haydovchilar yig'imi
 router.get('/drivers/collections', requireAuth, (req, res) => {
   const db = getDb();
