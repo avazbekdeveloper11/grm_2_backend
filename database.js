@@ -9,7 +9,7 @@ function getDb() {
   if (!db) {
     db = new DatabaseSync(DB_PATH);
     db.exec('PRAGMA journal_mode = WAL');
-    db.exec('PRAGMA foreign_keys = ON');
+    db.exec('PRAGMA foreign_keys = OFF');
   }
   return db;
 }
@@ -132,7 +132,6 @@ function initDb() {
   })();
 
   if (!constraintOk) {
-    db.prepare('PRAGMA foreign_keys=OFF').run();
     try { db.prepare('DROP TABLE IF EXISTS services_new').run(); } catch (_) {}
     db.prepare(`
       CREATE TABLE services_new (
@@ -149,7 +148,6 @@ function initDb() {
     db.prepare('INSERT INTO services_new SELECT * FROM services').run();
     db.prepare('DROP TABLE services').run();
     db.prepare('ALTER TABLE services_new RENAME TO services').run();
-    db.prepare('PRAGMA foreign_keys=ON').run();
     console.log("✓ services.unit_type: 'meter' qo'shildi");
   }
 
@@ -163,7 +161,6 @@ function initDb() {
 
   if (needsRebuild) {
     console.log('orders jadvalini yangilash boshlandi...');
-    db.exec('PRAGMA foreign_keys=OFF');
     db.exec('BEGIN');
     try {
       db.exec('DROP TABLE IF EXISTS orders_new');
@@ -205,11 +202,9 @@ function initDb() {
       db.exec('DROP TABLE orders');
       db.exec('ALTER TABLE orders_new RENAME TO orders');
       db.exec('COMMIT');
-      db.exec('PRAGMA foreign_keys=ON');
       console.log("✓ orders jadval yangilandi: payment_status 'qarz', assigned_worker_id");
     } catch (err) {
       db.exec('ROLLBACK');
-      db.exec('PRAGMA foreign_keys=ON');
       console.error('✗ orders migration xato, rollback qilindi:', err.message);
     }
   }
