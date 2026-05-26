@@ -153,58 +153,59 @@ function initDb() {
     console.log("✓ services.unit_type: 'meter' qo'shildi");
   }
 
-  // orders.payment_status CHECK constraintini 'qarz' qo'llab-quvvatlash uchun yangilash
-  const paymentConstraintOk = (() => {
-    try {
-      db.prepare("INSERT INTO orders (customer_name,phone,address,carpet_count,carpet_types,pickup_date,delivery_date,payment_status) VALUES ('__test__','__test__','__test__',0,'','2000-01-01','2000-01-01','qarz')").run();
-      db.prepare("DELETE FROM orders WHERE customer_name='__test__'").run();
-      return true;
-    } catch (_) { return false; }
+  // orders jadvalini to'liq schema bilan sinxronlash (payment_status + assigned_worker_id)
+  const ordersInfo = db.prepare("PRAGMA table_info(orders)").all();
+  const ordersColNames = new Set(ordersInfo.map(c => c.name));
+  const needsRebuild = !ordersColNames.has('assigned_worker_id') || (() => {
+    const sql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get()?.sql || '';
+    return !sql.includes("'qarz'");
   })();
 
-  if (!paymentConstraintOk) {
+  if (needsRebuild) {
+    console.log('orders jadvalini yangilash boshlandi...');
     db.prepare('PRAGMA foreign_keys=OFF').run();
-    const existingCols = new Set(db.prepare("PRAGMA table_info(orders)").all().map(c => c.name));
-    db.prepare('ALTER TABLE orders RENAME TO orders_old').run();
-    db.prepare(`
-      CREATE TABLE orders (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_name       TEXT NOT NULL,
-        phone               TEXT NOT NULL,
-        address             TEXT NOT NULL,
-        carpet_count        INTEGER NOT NULL DEFAULT 1,
-        carpet_types        TEXT NOT NULL DEFAULT '',
-        pickup_date         TEXT NOT NULL,
-        delivery_date       TEXT NOT NULL,
-        price               REAL NOT NULL DEFAULT 0,
-        total_price         REAL NOT NULL DEFAULT 0,
-        discount_amount     REAL NOT NULL DEFAULT 0,
-        advance_payment     REAL NOT NULL DEFAULT 0,
-        status              TEXT NOT NULL DEFAULT 'yangi'
-                              CHECK(status IN ('yangi','qabulQilindi','yuvilyapti','tayyor','yetkazildi')),
-        payment_status      TEXT NOT NULL DEFAULT 'tolanmagan'
-                              CHECK(payment_status IN ('tolanmagan','tolangan','qarz')),
-        assigned_worker_id  INTEGER REFERENCES users(id),
-        assigned_driver_id  INTEGER REFERENCES users(id),
-        notes               TEXT,
-        items_summary       TEXT,
-        pickup_lat          REAL,
-        pickup_lng          REAL,
-        collected_by        INTEGER REFERENCES users(id),
-        collected_at        TEXT,
-        created_at          TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-    // Faqat ikkala jadvalda ham bor bo'lgan ustunlarni ko'chirish
-    const newCols = ['id','customer_name','phone','address','carpet_count','carpet_types',
-      'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
-      'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
-      'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','created_at'];
-    const cols = newCols.filter(c => existingCols.has(c)).join(',');
-    db.prepare(`INSERT INTO orders (${cols}) SELECT ${cols} FROM orders_old`).run();
-    db.prepare('DROP TABLE orders_old').run();
+    db.transaction(() => {
+      try { db.prepare('DROP TABLE IF EXISTS orders_new').run(); } catch (_) {}
+      db.prepare(`
+        CREATE TABLE orders_new (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_name       TEXT NOT NULL,
+          phone               TEXT NOT NULL,
+          address             TEXT NOT NULL,
+          carpet_count        INTEGER NOT NULL DEFAULT 1,
+          carpet_types        TEXT NOT NULL DEFAULT '',
+          pickup_date         TEXT NOT NULL,
+          delivery_date       TEXT NOT NULL,
+          price               REAL NOT NULL DEFAULT 0,
+          total_price         REAL NOT NULL DEFAULT 0,
+          discount_amount     REAL NOT NULL DEFAULT 0,
+          advance_payment     REAL NOT NULL DEFAULT 0,
+          status              TEXT NOT NULL DEFAULT 'yangi'
+                                CHECK(status IN ('yangi','qabulQilindi','yuvilyapti','tayyor','yetkazildi')),
+          payment_status      TEXT NOT NULL DEFAULT 'tolanmagan'
+                                CHECK(payment_status IN ('tolanmagan','tolangan','qarz')),
+          assigned_worker_id  INTEGER REFERENCES users(id),
+          assigned_driver_id  INTEGER REFERENCES users(id),
+          notes               TEXT,
+          items_summary       TEXT,
+          pickup_lat          REAL,
+          pickup_lng          REAL,
+          collected_by        INTEGER REFERENCES users(id),
+          collected_at        TEXT,
+          created_at          TEXT DEFAULT (datetime('now'))
+        )
+      `).run();
+      const allNewCols = ['id','customer_name','phone','address','carpet_count','carpet_types',
+        'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
+        'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
+        'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','created_at'];
+      const cols = allNewCols.filter(c => ordersColNames.has(c)).join(',');
+      db.prepare(`INSERT INTO orders_new (${cols}) SELECT ${cols} FROM orders`).run();
+      db.prepare('DROP TABLE orders').run();
+      db.prepare('ALTER TABLE orders_new RENAME TO orders').run();
+    })();
     db.prepare('PRAGMA foreign_keys=ON').run();
-    console.log("✓ orders.payment_status: 'qarz' qo'shildi");
+    console.log("✓ orders jadval yangilandi: payment_status 'qarz', assigned_worker_id");
   }
 
   // Seed services if empty
