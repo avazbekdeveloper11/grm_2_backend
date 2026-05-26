@@ -115,7 +115,7 @@ router.post('/', requireAdmin, (req, res) => {
     assigned_worker_id || null, assigned_driver_id || null,
     notes || null,
     carpet_count || 0,
-    carpet_types || null,
+    carpet_types ?? '',
   );
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
