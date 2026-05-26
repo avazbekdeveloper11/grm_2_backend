@@ -15,7 +15,11 @@ function getPricePerSqm(db) {
 function recalcOrderTotal(db, orderId) {
   const carpets = db.prepare('SELECT price FROM carpets WHERE order_id = ?').all(orderId);
   const total = carpets.reduce((sum, c) => sum + c.price, 0);
-  db.prepare('UPDATE orders SET total_price = ? WHERE id = ?').run(total, orderId);
+  // order_items mavjud bo'lsa ular skidkali narxni saqlagan — carpet narxi bilan qayta yozmaymiz
+  const hasItems = db.prepare('SELECT COUNT(*) as c FROM order_items WHERE order_id = ?').get(orderId).c > 0;
+  if (!hasItems) {
+    db.prepare('UPDATE orders SET total_price = ? WHERE id = ?').run(total, orderId);
+  }
   return total;
 }
 
@@ -53,15 +57,18 @@ router.get('/', requireAuth, (req, res) => {
     `).all();
   }
   // Har bir order uchun items_summary qo'shamiz
+  const placeholder = orders.map(() => '?').join(',') || '0';
+
   const itemsQuery = db.prepare(`
     SELECT oi.order_id,
       SUM(CASE WHEN s.unit_type='sqm'   THEN oi.area     ELSE 0 END) as total_sqm,
       SUM(CASE WHEN s.unit_type='meter' THEN oi.quantity  ELSE 0 END) as total_meter,
       SUM(CASE WHEN s.unit_type='piece' THEN oi.quantity  ELSE 0 END) as total_piece,
-      COUNT(*) as items_count
+      COUNT(*) as items_count,
+      SUM(oi.total_price) as items_total
     FROM order_items oi
     JOIN services s ON s.id = oi.service_id
-    WHERE oi.order_id IN (${orders.map(() => '?').join(',') || '0'})
+    WHERE oi.order_id IN (${placeholder})
     GROUP BY oi.order_id
   `);
   const summaries = orders.length > 0
@@ -70,10 +77,41 @@ router.get('/', requireAuth, (req, res) => {
   const summaryMap = {};
   for (const s of summaries) summaryMap[s.order_id] = s;
 
-  const result = orders.map(o => ({
-    ...o,
-    items_summary: summaryMap[o.id] || null,
-  }));
+  // Global discount settings
+  const discEnabledRow = db.prepare("SELECT value FROM settings WHERE key='discount_enabled'").get();
+  const discMinRow     = db.prepare("SELECT value FROM settings WHERE key='discount_min_sqm'").get();
+  const discPctRow     = db.prepare("SELECT value FROM settings WHERE key='discount_percentage'").get();
+  const discEnabled    = discEnabledRow?.value === '1';
+  const discMinSqm     = discMinRow ? Number(discMinRow.value) : 0;
+  const discPct        = discPctRow ? Number(discPctRow.value) : 0;
+
+  const result = orders.map(o => {
+    const summary = summaryMap[o.id] || null;
+    let calcTotal = o.total_price;
+    let calcDiscount = o.discount_amount || 0;
+    if (summary && summary.items_total > 0) {
+      // items_total = per-service discounted sum; apply global discount on top
+      const itemsTotal = summary.items_total;
+      const totalSqm = summary.total_sqm || 0;
+      let globalDisc = 0;
+      if (discEnabled && discMinSqm > 0 && discPct > 0 && totalSqm >= discMinSqm) {
+        globalDisc = itemsTotal * discPct / 100;
+      }
+      calcTotal = Math.max(0, itemsTotal - globalDisc);
+      calcDiscount = globalDisc + (o.discount_amount || 0);
+      // Sync DB if stale (background, best-effort)
+      if (Math.abs(calcTotal - o.total_price) > 0.5) {
+        db.prepare('UPDATE orders SET total_price = ?, discount_amount = ? WHERE id = ?')
+          .run(calcTotal, globalDisc, o.id);
+      }
+    }
+    return {
+      ...o,
+      total_price: calcTotal,
+      discount_amount: calcDiscount,
+      items_summary: summary,
+    };
+  });
   res.json(result);
 });
 
@@ -88,6 +126,34 @@ router.get('/:id', requireAuth, (req, res) => {
     WHERE o.id = ?
   `).get(Number(req.params.id));
   if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  // order_items mavjud bo'lsa skidkali narxni qayta hisoblash
+  const itemsRow = db.prepare(
+    'SELECT SUM(total_price) as items_total, SUM(area) as total_sqm FROM order_items oi JOIN services s ON s.id=oi.service_id WHERE oi.order_id=? AND s.unit_type="sqm"'
+  ).get(order.id);
+  const itemsTotalRow = db.prepare(
+    'SELECT SUM(total_price) as items_total FROM order_items WHERE order_id=?'
+  ).get(order.id);
+
+  if (itemsTotalRow && itemsTotalRow.items_total > 0) {
+    const discEnabledRow = db.prepare("SELECT value FROM settings WHERE key='discount_enabled'").get();
+    const discMinRow     = db.prepare("SELECT value FROM settings WHERE key='discount_min_sqm'").get();
+    const discPctRow     = db.prepare("SELECT value FROM settings WHERE key='discount_percentage'").get();
+    const discEnabled    = discEnabledRow?.value === '1';
+    const discMinSqm     = discMinRow ? Number(discMinRow.value) : 0;
+    const discPct        = discPctRow ? Number(discPctRow.value) : 0;
+    const itemsTotal     = itemsTotalRow.items_total;
+    const totalSqm       = itemsRow?.total_sqm || 0;
+    let globalDisc = 0;
+    if (discEnabled && discMinSqm > 0 && discPct > 0 && totalSqm >= discMinSqm) {
+      globalDisc = itemsTotal * discPct / 100;
+    }
+    const calcTotal = Math.max(0, itemsTotal - globalDisc);
+    if (Math.abs(calcTotal - order.total_price) > 0.5) {
+      db.prepare('UPDATE orders SET total_price=?, discount_amount=? WHERE id=?').run(calcTotal, globalDisc, order.id);
+    }
+    return res.json({ ...order, total_price: calcTotal, discount_amount: globalDisc });
+  }
   res.json(order);
 });
 
