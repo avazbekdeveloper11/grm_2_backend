@@ -163,10 +163,11 @@ function initDb() {
 
   if (needsRebuild) {
     console.log('orders jadvalini yangilash boshlandi...');
-    db.prepare('PRAGMA foreign_keys=OFF').run();
-    db.transaction(() => {
-      try { db.prepare('DROP TABLE IF EXISTS orders_new').run(); } catch (_) {}
-      db.prepare(`
+    db.exec('PRAGMA foreign_keys=OFF');
+    db.exec('BEGIN');
+    try {
+      db.exec('DROP TABLE IF EXISTS orders_new');
+      db.exec(`
         CREATE TABLE orders_new (
           id                  INTEGER PRIMARY KEY AUTOINCREMENT,
           customer_name       TEXT NOT NULL,
@@ -194,18 +195,23 @@ function initDb() {
           collected_at        TEXT,
           created_at          TEXT DEFAULT (datetime('now'))
         )
-      `).run();
+      `);
       const allNewCols = ['id','customer_name','phone','address','carpet_count','carpet_types',
         'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
         'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
         'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','created_at'];
       const cols = allNewCols.filter(c => ordersColNames.has(c)).join(',');
-      db.prepare(`INSERT INTO orders_new (${cols}) SELECT ${cols} FROM orders`).run();
-      db.prepare('DROP TABLE orders').run();
-      db.prepare('ALTER TABLE orders_new RENAME TO orders').run();
-    })();
-    db.prepare('PRAGMA foreign_keys=ON').run();
-    console.log("✓ orders jadval yangilandi: payment_status 'qarz', assigned_worker_id");
+      db.exec(`INSERT INTO orders_new (${cols}) SELECT ${cols} FROM orders`);
+      db.exec('DROP TABLE orders');
+      db.exec('ALTER TABLE orders_new RENAME TO orders');
+      db.exec('COMMIT');
+      db.exec('PRAGMA foreign_keys=ON');
+      console.log("✓ orders jadval yangilandi: payment_status 'qarz', assigned_worker_id");
+    } catch (err) {
+      db.exec('ROLLBACK');
+      db.exec('PRAGMA foreign_keys=ON');
+      console.error('✗ orders migration xato, rollback qilindi:', err.message);
+    }
   }
 
   // Seed services if empty
