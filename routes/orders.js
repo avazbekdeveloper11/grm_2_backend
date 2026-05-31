@@ -203,6 +203,7 @@ router.post('/', requireAdmin, (req, res) => {
 
 // PUT /api/orders/:id
 router.put('/:id', requireAuth, async (req, res) => {
+  try {
   const db = getDb();
   const id = Number(req.params.id);
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
@@ -304,6 +305,10 @@ router.put('/:id', requireAuth, async (req, res) => {
 
   broadcast('order_updated', { order_id: id, status: result.status });
   res.json(result);
+  } catch (err) {
+    console.error('PUT /orders/:id xatolik:', err);
+    res.status(500).json({ error: err.message || 'Server xatoligi' });
+  }
 });
 
 // DELETE /api/orders/:id
