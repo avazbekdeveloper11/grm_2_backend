@@ -247,7 +247,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     assigned_driver_id !== undefined ? (assigned_driver_id || null) : order.assigned_driver_id,
     notes !== undefined ? (notes || null) : order.notes,
     carpet_count ?? order.carpet_count,
-    carpet_types !== undefined ? (carpet_types || null) : order.carpet_types,
+    carpet_types !== undefined ? (carpet_types ?? '') : (order.carpet_types ?? ''),
     newManualPrice,
     id
   );
