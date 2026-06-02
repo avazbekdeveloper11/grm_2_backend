@@ -36,12 +36,12 @@ router.post('/', requireAdmin, (req, res) => {
   if (!name || !role) {
     return res.status(400).json({ error: 'Ism va rol talab qilinadi' });
   }
-  if (!['worker', 'driver'].includes(role)) {
-    return res.status(400).json({ error: "Rol worker yoki driver bo'lishi kerak" });
+  if (!['worker', 'driver', 'upakovchik'].includes(role)) {
+    return res.status(400).json({ error: "Rol worker, driver yoki upakovchik bo'lishi kerak" });
   }
 
   const db = getDb();
-  const prefix = role === 'worker' ? 'usta' : 'haydovchi';
+  const prefix = role === 'worker' ? 'usta' : role === 'driver' ? 'haydovchi' : 'upakov';
   const existing = db.prepare('SELECT COUNT(*) as c FROM users WHERE role = ?').get(role).c;
   const login = `${prefix}${Number(existing) + 1}`;
   const password = generatePassword();

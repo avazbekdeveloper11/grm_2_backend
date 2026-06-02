@@ -23,7 +23,7 @@ function initDb() {
       name TEXT NOT NULL,
       login TEXT NOT NULL UNIQUE,
       password TEXT NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('admin','worker','driver')),
+      role TEXT NOT NULL CHECK(role IN ('admin','worker','driver','upakovchik')),
       is_active INTEGER NOT NULL DEFAULT 1,
       fcm_token TEXT,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -206,6 +206,150 @@ function initDb() {
     } catch (err) {
       db.exec('ROLLBACK');
       console.error('✗ orders migration xato, rollback qilindi:', err.message);
+    }
+  }
+
+  // orders jadvalida 'upakovka' statusi CHECK constraint ga qo'shish
+  const ordersSchemaRow = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'").get();
+  const ordersSchema = ordersSchemaRow?.sql || '';
+  if (!ordersSchema.includes("'upakovka'")) {
+    console.log("orders jadvalini 'upakovka' statusi uchun yangilash...");
+    db.exec('BEGIN');
+    try {
+      const curColsInfo = db.prepare("PRAGMA table_info(orders)").all();
+      const curColNames = curColsInfo.map(c => c.name);
+      db.exec('DROP TABLE IF EXISTS orders_new');
+      db.exec(`
+        CREATE TABLE orders_new (
+          id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_name       TEXT NOT NULL,
+          phone               TEXT NOT NULL,
+          address             TEXT NOT NULL,
+          carpet_count        INTEGER NOT NULL DEFAULT 1,
+          carpet_types        TEXT NOT NULL DEFAULT '',
+          pickup_date         TEXT NOT NULL,
+          delivery_date       TEXT NOT NULL,
+          price               REAL NOT NULL DEFAULT 0,
+          total_price         REAL NOT NULL DEFAULT 0,
+          discount_amount     REAL NOT NULL DEFAULT 0,
+          advance_payment     REAL NOT NULL DEFAULT 0,
+          status              TEXT NOT NULL DEFAULT 'yangi'
+                                CHECK(status IN ('yangi','qabulQilindi','yuvilyapti','upakovka','tayyor','yetkazildi')),
+          payment_status      TEXT NOT NULL DEFAULT 'tolanmagan'
+                                CHECK(payment_status IN ('tolanmagan','tolangan','qarz')),
+          assigned_worker_id  INTEGER REFERENCES users(id),
+          assigned_driver_id  INTEGER REFERENCES users(id),
+          notes               TEXT,
+          items_summary       TEXT,
+          pickup_lat          REAL,
+          pickup_lng          REAL,
+          collected_by        INTEGER REFERENCES users(id),
+          collected_at        TEXT,
+          manual_price        REAL,
+          created_at          TEXT DEFAULT (datetime('now'))
+        )
+      `);
+      const allNewCols = ['id','customer_name','phone','address','carpet_count','carpet_types',
+        'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
+        'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
+        'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','manual_price','created_at'];
+      const cols = allNewCols.filter(c => curColNames.includes(c)).join(',');
+      db.exec(`INSERT INTO orders_new (${cols}) SELECT ${cols} FROM orders`);
+      db.exec('DROP TABLE orders');
+      db.exec('ALTER TABLE orders_new RENAME TO orders');
+      db.exec('COMMIT');
+      console.log("✓ orders jadval yangilandi: 'upakovka' statusi qo'shildi");
+    } catch (err) {
+      db.exec('ROLLBACK');
+      console.error("✗ upakovka migration xato:", err.message);
+    }
+  }
+
+  // assigned_upakovchik_id ustunini qo'shish + users jadvalini upakovchik roli uchun yangilash
+  const ordersInfo2 = db.prepare("PRAGMA table_info(orders)").all();
+  const hasUpakovchikCol = ordersInfo2.some(c => c.name === 'assigned_upakovchik_id');
+  if (!hasUpakovchikCol) {
+    console.log("orders ga assigned_upakovchik_id qo'shilmoqda...");
+    db.exec('BEGIN');
+    try {
+      const curColsInfo2 = db.prepare("PRAGMA table_info(orders)").all();
+      const curColNames2 = curColsInfo2.map(c => c.name);
+      db.exec('DROP TABLE IF EXISTS orders_new');
+      db.exec(`
+        CREATE TABLE orders_new (
+          id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+          customer_name           TEXT NOT NULL,
+          phone                   TEXT NOT NULL,
+          address                 TEXT NOT NULL,
+          carpet_count            INTEGER NOT NULL DEFAULT 1,
+          carpet_types            TEXT NOT NULL DEFAULT '',
+          pickup_date             TEXT NOT NULL,
+          delivery_date           TEXT NOT NULL,
+          price                   REAL NOT NULL DEFAULT 0,
+          total_price             REAL NOT NULL DEFAULT 0,
+          discount_amount         REAL NOT NULL DEFAULT 0,
+          advance_payment         REAL NOT NULL DEFAULT 0,
+          status                  TEXT NOT NULL DEFAULT 'yangi'
+                                    CHECK(status IN ('yangi','qabulQilindi','yuvilyapti','upakovka','tayyor','yetkazildi')),
+          payment_status          TEXT NOT NULL DEFAULT 'tolanmagan'
+                                    CHECK(payment_status IN ('tolanmagan','tolangan','qarz')),
+          assigned_worker_id      INTEGER REFERENCES users(id),
+          assigned_driver_id      INTEGER REFERENCES users(id),
+          assigned_upakovchik_id  INTEGER REFERENCES users(id),
+          notes                   TEXT,
+          items_summary           TEXT,
+          pickup_lat              REAL,
+          pickup_lng              REAL,
+          collected_by            INTEGER REFERENCES users(id),
+          collected_at            TEXT,
+          manual_price            REAL,
+          created_at              TEXT DEFAULT (datetime('now'))
+        )
+      `);
+      const allNewCols2 = ['id','customer_name','phone','address','carpet_count','carpet_types',
+        'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
+        'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
+        'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','manual_price','created_at'];
+      const cols2 = allNewCols2.filter(c => curColNames2.includes(c)).join(',');
+      db.exec(`INSERT INTO orders_new (${cols2}) SELECT ${cols2} FROM orders`);
+      db.exec('DROP TABLE orders');
+      db.exec('ALTER TABLE orders_new RENAME TO orders');
+      db.exec('COMMIT');
+      console.log("✓ orders.assigned_upakovchik_id qo'shildi");
+    } catch (err) {
+      db.exec('ROLLBACK');
+      console.error("✗ upakovchik_id migration xato:", err.message);
+    }
+  }
+
+  // users jadvalidagi role CHECK ni upakovchik uchun yangilash
+  const usersSchemaRow = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get();
+  const usersSchema = usersSchemaRow?.sql || '';
+  if (!usersSchema.includes("'upakovchik'")) {
+    console.log("users jadvalini 'upakovchik' roli uchun yangilash...");
+    db.exec('BEGIN');
+    try {
+      db.exec('DROP TABLE IF EXISTS users_new');
+      db.exec(`
+        CREATE TABLE users_new (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          name       TEXT NOT NULL,
+          login      TEXT NOT NULL UNIQUE,
+          password   TEXT NOT NULL,
+          role       TEXT NOT NULL CHECK(role IN ('admin','worker','driver','upakovchik')),
+          is_active  INTEGER NOT NULL DEFAULT 1,
+          fcm_token  TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `);
+      db.exec(`INSERT INTO users_new SELECT * FROM users`);
+      db.exec('DROP TABLE users');
+      db.exec('ALTER TABLE users_new RENAME TO users');
+      db.exec('COMMIT');
+      console.log("✓ users.role CHECK: 'upakovchik' qo'shildi");
+    } catch (err) {
+      db.exec('ROLLBACK');
+      console.error("✗ users migration xato:", err.message);
     }
   }
 
