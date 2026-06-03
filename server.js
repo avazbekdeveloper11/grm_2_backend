@@ -5,6 +5,7 @@ const { initDb } = require('./database');
 const { initWebSocket } = require('./websocket');
 
 const { requireVersion } = require('./middleware/version');
+const { languageMiddleware } = require('./middleware/language');
 const authRoutes        = require('./routes/auth');
 const usersRoutes       = require('./routes/users');
 const ordersRoutes      = require('./routes/orders');
@@ -19,6 +20,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(requireVersion);
+app.use(languageMiddleware);
 
 initDb();
 
