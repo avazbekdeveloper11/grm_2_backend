@@ -117,6 +117,12 @@ function initDb() {
     "ALTER TABLE services ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN manual_price REAL",
     "ALTER TABLE orders ADD COLUMN advance_payment REAL NOT NULL DEFAULT 0",
+    `CREATE TABLE IF NOT EXISTS salary_percent_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      percent REAL NOT NULL,
+      effective_from TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {} // ustun allaqachon bor bo'lsa xato ignore

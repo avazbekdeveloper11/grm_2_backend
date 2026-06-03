@@ -29,7 +29,8 @@ router.put('/', requireAdmin, (req, res) => {
   const { price_per_sqm, eskiz_email, eskiz_password, sms_template,
           sms_enabled,
           discount_enabled, discount_min_sqm, discount_amount,
-          discount_percentage, discount_step_sqm } = req.body;
+          discount_percentage, discount_step_sqm,
+          worker_salary_percent } = req.body;
 
   if (price_per_sqm !== undefined) {
     const val = Number(price_per_sqm);
@@ -86,6 +87,32 @@ router.put('/', requireAdmin, (req, res) => {
     }
   }
 
+  if (worker_salary_percent !== undefined) {
+    const val = Number(worker_salary_percent);
+    if (!isNaN(val) && val >= 0 && val <= 100) {
+      // Eski qiymatni o'qi (yangilashdan OLDIN)
+      const oldRow = db.prepare("SELECT value FROM settings WHERE key='worker_salary_percent'").get();
+      const oldVal = oldRow ? Number(oldRow.value) : 20;
+
+      db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('worker_salary_percent', ?)").run(String(val));
+
+      // Tarix bo'sh bo'lsa — eski qiymatni boshidan seed qil (1970-01-01)
+      const histCount = db.prepare("SELECT COUNT(*) as c FROM salary_percent_history").get().c;
+      if (histCount === 0) {
+        db.prepare("INSERT INTO salary_percent_history (percent, effective_from) VALUES (?, '1970-01-01')").run(oldVal);
+      }
+
+      // Bugungi yozuv: bor bo'lsa yangilash, yo'q bo'lsa qo'shish
+      const today = new Date().toISOString().slice(0, 10);
+      const existing = db.prepare("SELECT id FROM salary_percent_history WHERE effective_from = ?").get(today);
+      if (existing) {
+        db.prepare("UPDATE salary_percent_history SET percent = ? WHERE effective_from = ?").run(val, today);
+      } else {
+        db.prepare("INSERT INTO salary_percent_history (percent, effective_from) VALUES (?, ?)").run(val, today);
+      }
+    }
+  }
+
   // Return updated settings
   const rows = db.prepare('SELECT key, value FROM settings').all();
   const result = {};
@@ -93,6 +120,15 @@ router.put('/', requireAdmin, (req, res) => {
     result[row.key] = row.key === 'price_per_sqm' ? Number(row.value) : row.value;
   }
   res.json(result);
+});
+
+// GET /api/settings/salary-percent-history
+router.get('/salary-percent-history', requireAuth, (req, res) => {
+  const db = getDb();
+  const rows = db.prepare(
+    'SELECT percent, effective_from FROM salary_percent_history ORDER BY effective_from ASC'
+  ).all();
+  res.json(rows);
 });
 
 // POST /api/settings/sms-test  — send test SMS to given phone
