@@ -23,18 +23,7 @@ function recalcOrderTotal(db, orderId) {
   return total;
 }
 
-function translit(s) {
-  const pairs = [
-    ['sh','ш'],['ch','ч'],["o'","ў"],["g'","ғ"],["'","ъ"],
-    ['a','а'],['b','б'],['d','д'],['e','е'],['f','ф'],['g','г'],
-    ['h','х'],['i','и'],['j','ж'],['k','к'],['l','л'],['m','м'],
-    ['n','н'],['o','о'],['p','п'],['q','қ'],['r','р'],['s','с'],
-    ['t','т'],['u','у'],['v','в'],['x','х'],['y','й'],['z','з'],
-  ];
-  let r = s.toLowerCase();
-  for (const [lat, cyr] of pairs) r = r.split(lat).join(cyr);
-  return r;
-}
+const { latinToCyrillic, cyrillicToLatin } = require('../services/transliterate');
 
 // GET /api/orders
 router.get('/', requireAuth, (req, res) => {
@@ -46,24 +35,32 @@ router.get('/', requireAuth, (req, res) => {
   const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 20));
   const offset = (page - 1) * limit;
 
-  // search pattern: wildcard on name, phone, address; exact match on id
+  // search: har ikki alifboda ham qidirish (latin ↔ kirill)
   const like = q ? `%${q}%` : null;
   const idQ = q ? q.replace(/^#+/, '').replace(/^0+/, '') : null;
-  const qTranslit = q ? translit(q) : null;
-  const likeTranslit = (qTranslit && qTranslit !== q) ? `%${qTranslit}%` : null;
+  const qCyr = q ? latinToCyrillic(q.toLowerCase()) : null;
+  const qLat = q ? cyrillicToLatin(q.toLowerCase()) : null;
+  const likeCyr = (qCyr && qCyr !== q) ? `%${qCyr}%` : null;
+  const likeLat = (qLat && qLat !== q) ? `%${qLat}%` : null;
 
   function buildWhere(extraCond) {
     const conds = [];
     const params = [];
     if (extraCond) { conds.push(extraCond.cond); params.push(...extraCond.params); }
     if (like) {
-      if (likeTranslit) {
-        conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ? OR o.customer_name LIKE ? OR o.address LIKE ?)`);
-        params.push(like, like, like, idQ, likeTranslit, likeTranslit);
-      } else {
-        conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ?)`);
-        params.push(like, like, like, idQ);
+      const orParts = [
+        'o.customer_name LIKE ?', 'o.phone LIKE ?', 'o.address LIKE ?', 'CAST(o.id AS TEXT) = ?',
+      ];
+      params.push(like, like, like, idQ);
+      if (likeCyr) {
+        orParts.push('o.customer_name LIKE ?', 'o.address LIKE ?');
+        params.push(likeCyr, likeCyr);
       }
+      if (likeLat) {
+        orParts.push('o.customer_name LIKE ?', 'o.address LIKE ?');
+        params.push(likeLat, likeLat);
+      }
+      conds.push(`(${orParts.join(' OR ')})`);
     }
     return {
       where: conds.length ? 'WHERE ' + conds.join(' AND ') : '',
