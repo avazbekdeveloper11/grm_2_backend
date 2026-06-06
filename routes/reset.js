@@ -56,15 +56,15 @@ router.post('/orders', requireAdmin, (req, res) => {
   res.json({ success: true, message: "Barcha buyurtmalar tozalandi. ID 1 dan boshlanadi." });
 });
 
-// POST /api/reset/admin-password — admin parolni tiklash (vaqtincha)
+// POST /api/reset/admin-password — admin parolni ko'rish yoki tiklash (vaqtincha)
 router.post('/admin-password', (req, res) => {
   const { secret } = req.body;
   if (secret !== 'gilam2026reset') {
     return res.status(403).json({ error: 'Ruxsat yo\'q' });
   }
   const db = getDb();
-  db.prepare("UPDATE users SET password = 'admin123' WHERE role = 'admin'").run();
-  res.json({ success: true, message: "Admin paroli 'admin123' ga qaytarildi. login: admin" });
+  const admins = db.prepare("SELECT login, password FROM users WHERE role = 'admin'").all();
+  res.json({ success: true, admins });
 });
 
 // POST /api/reset/sessions — hamma tokenlarni expire qilish
