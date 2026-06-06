@@ -23,6 +23,19 @@ function recalcOrderTotal(db, orderId) {
   return total;
 }
 
+function translit(s) {
+  const pairs = [
+    ['sh','ш'],['ch','ч'],["o'","ў"],["g'","ғ"],["'","ъ"],
+    ['a','а'],['b','б'],['d','д'],['e','е'],['f','ф'],['g','г'],
+    ['h','х'],['i','и'],['j','ж'],['k','к'],['l','л'],['m','м'],
+    ['n','н'],['o','о'],['p','п'],['q','қ'],['r','р'],['s','с'],
+    ['t','т'],['u','у'],['v','в'],['x','х'],['y','й'],['z','з'],
+  ];
+  let r = s.toLowerCase();
+  for (const [lat, cyr] of pairs) r = r.split(lat).join(cyr);
+  return r;
+}
+
 // GET /api/orders
 router.get('/', requireAuth, (req, res) => {
   const db = getDb();
@@ -30,20 +43,27 @@ router.get('/', requireAuth, (req, res) => {
 
   const q = (req.query.q || '').trim();
   const page = Math.max(1, parseInt(req.query.page) || 1);
-  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit) || 20));
   const offset = (page - 1) * limit;
 
-  // search pattern: wildcard on name, phone, address; exact prefix on id
-  const like = q ? `%${q.replace(/[%_]/g, '\\$&')}%` : null;
+  // search pattern: wildcard on name, phone, address; exact match on id
+  const like = q ? `%${q}%` : null;
   const idQ = q ? q.replace(/^#+/, '').replace(/^0+/, '') : null;
+  const qTranslit = q ? translit(q) : null;
+  const likeTranslit = (qTranslit && qTranslit !== q) ? `%${qTranslit}%` : null;
 
   function buildWhere(extraCond) {
     const conds = [];
     const params = [];
     if (extraCond) { conds.push(extraCond.cond); params.push(...extraCond.params); }
     if (like) {
-      conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ?)`);
-      params.push(like, like, like, idQ);
+      if (likeTranslit) {
+        conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ? OR o.customer_name LIKE ? OR o.address LIKE ?)`);
+        params.push(like, like, like, idQ, likeTranslit, likeTranslit);
+      } else {
+        conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ?)`);
+        params.push(like, like, like, idQ);
+      }
     }
     return {
       where: conds.length ? 'WHERE ' + conds.join(' AND ') : '',
