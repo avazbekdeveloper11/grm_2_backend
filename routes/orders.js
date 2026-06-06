@@ -36,12 +36,21 @@ router.get('/', requireAuth, (req, res) => {
   const offset = (page - 1) * limit;
 
   // search: har ikki alifboda ham qidirish (latin ↔ kirill)
+  // SQLite LIKE kirill uchun katta/kichik harfni farqlamaydi deb ishlamaydi,
+  // shuning uchun asl registrda ham, kichik harfda ham qidiramiz.
   const like = q ? `%${q}%` : null;
   const idQ = q ? q.replace(/^#+/, '').replace(/^0+/, '') : null;
-  const qCyr = q ? latinToCyrillic(q.toLowerCase()) : null;
-  const qLat = q ? cyrillicToLatin(q.toLowerCase()) : null;
-  const likeCyr = (qCyr && qCyr !== q) ? `%${qCyr}%` : null;
-  const likeLat = (qLat && qLat !== q) ? `%${qLat}%` : null;
+
+  // latin→kirill: asl registr + kichik harf versiyasi (DB da qanday saqlanganini bilmaymiz)
+  const qCyrOrig  = q ? latinToCyrillic(q) : null;
+  const qCyrLower = q ? latinToCyrillic(q.toLowerCase()) : null;
+  // kirill→latin: asl registr + kichik harf versiyasi
+  const qLatOrig  = q ? cyrillicToLatin(q) : null;
+  const qLatLower = q ? cyrillicToLatin(q.toLowerCase()) : null;
+
+  // O'zgargan versiyalarni yig'amiz (duplikat va original `q` ni o'tkazib yuboramiz)
+  const alts = [...new Set([qCyrOrig, qCyrLower, qLatOrig, qLatLower])]
+    .filter(v => v && v !== q && v !== q.toLowerCase());
 
   function buildWhere(extraCond) {
     const conds = [];
@@ -52,13 +61,9 @@ router.get('/', requireAuth, (req, res) => {
         'o.customer_name LIKE ?', 'o.phone LIKE ?', 'o.address LIKE ?', 'CAST(o.id AS TEXT) = ?',
       ];
       params.push(like, like, like, idQ);
-      if (likeCyr) {
+      for (const alt of alts) {
         orParts.push('o.customer_name LIKE ?', 'o.address LIKE ?');
-        params.push(likeCyr, likeCyr);
-      }
-      if (likeLat) {
-        orParts.push('o.customer_name LIKE ?', 'o.address LIKE ?');
-        params.push(likeLat, likeLat);
+        params.push(`%${alt}%`, `%${alt}%`);
       }
       conds.push(`(${orParts.join(' OR ')})`);
     }
