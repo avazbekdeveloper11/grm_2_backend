@@ -16,7 +16,7 @@ router.get('/balances', requireAuth, (req, res) => {
   `).all();
 
   const result = drivers.map(driver => {
-    // Jami yig'ilgan (order_items mavjud bo'lsa ulardan, aks holda total_price)
+    // To'liq to'langan buyurtmalardan yig'im (order_items mavjud bo'lsa ulardan)
     const collected = db.prepare(`
       SELECT
         COALESCE(SUM(
@@ -25,6 +25,13 @@ router.get('/balances', requireAuth, (req, res) => {
         COUNT(*) as count
       FROM orders o
       WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
+    `).get(driver.id);
+
+    // Hali to'lanmagan buyurtmalardan avans to'lovlar
+    const advances = db.prepare(`
+      SELECT COALESCE(SUM(o.advance_payment), 0) as total, COUNT(*) as count
+      FROM orders o
+      WHERE o.assigned_driver_id = ? AND o.advance_payment > 0 AND o.payment_status != 'tolangan'
     `).get(driver.id);
 
     // Jami topshirilgan (adminga)
@@ -41,15 +48,19 @@ router.get('/balances', requireAuth, (req, res) => {
       ORDER BY created_at DESC LIMIT 1
     `).get(driver.id);
 
+    const totalCollected = collected.total + advances.total;
+
     return {
       id: driver.id,
       name: driver.name,
       login: driver.login,
-      total_collected: collected.total,
+      total_collected: totalCollected,
       collected_count: collected.count,
+      advance_count: advances.count,
+      advance_total: advances.total,
       total_settled: settled.total,
       settled_count: settled.count,
-      balance: collected.total - settled.total, // haydovchida qolgan pul
+      balance: totalCollected - settled.total,
       last_settlement: lastSettlement?.created_at || null,
     };
   });
@@ -62,7 +73,7 @@ router.get('/driver/:id', requireAuth, (req, res) => {
   const db = getDb();
   const driverId = Number(req.params.id);
 
-  // Yig'ilgan buyurtmalar (kunlik guruhlangan, order_items dan skidkali narx)
+  // To'liq to'langan buyurtmalar (kunlik guruhlangan, order_items dan skidkali narx)
   const collectedOrders = db.prepare(`
     SELECT
       date(o.collected_at) as day,
@@ -70,10 +81,25 @@ router.get('/driver/:id', requireAuth, (req, res) => {
       SUM(COALESCE(
         (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
         o.total_price
-      )) as total
+      )) as total,
+      SUM(o.advance_payment) as advance_total
     FROM orders o
     WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
     GROUP BY date(o.collected_at)
+    ORDER BY day DESC
+    LIMIT 30
+  `).all(driverId);
+
+  // Avans to'lovlar (hali to'lanmagan buyurtmalardan, kunlik guruhlangan)
+  const advanceOrders = db.prepare(`
+    SELECT
+      date(o.advance_payment_at) as day,
+      COUNT(*) as count,
+      SUM(o.advance_payment) as advance_sum
+    FROM orders o
+    WHERE o.assigned_driver_id = ? AND o.advance_payment > 0 AND o.payment_status != 'tolangan'
+      AND o.advance_payment_at IS NOT NULL
+    GROUP BY date(o.advance_payment_at)
     ORDER BY day DESC
     LIMIT 30
   `).all(driverId);
@@ -88,20 +114,33 @@ router.get('/driver/:id', requireAuth, (req, res) => {
     LIMIT 30
   `).all(driverId);
 
-  // Balans (order_items dan skidkali narx)
-  const balance = db.prepare(`
-    SELECT
-      COALESCE((
-        SELECT SUM(COALESCE(
-          (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
-          o.total_price
-        ))
-        FROM orders o WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
-      ), 0)
-      - COALESCE((SELECT SUM(amount) FROM driver_settlements WHERE driver_id = ?), 0) as balance
-  `).get(driverId, driverId);
+  // Balans: to'langan + avanslar - topshirilgan
+  const collectedTotal = db.prepare(`
+    SELECT COALESCE(SUM(COALESCE(
+      (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
+      o.total_price
+    )), 0) as total
+    FROM orders o WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
+  `).get(driverId).total;
 
-  res.json({ collectedOrders, settlements, balance: balance.balance });
+  const advanceTotal = db.prepare(`
+    SELECT COALESCE(SUM(o.advance_payment), 0) as total
+    FROM orders o
+    WHERE o.assigned_driver_id = ? AND o.advance_payment > 0 AND o.payment_status != 'tolangan'
+  `).get(driverId).total;
+
+  const settledTotal = db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) as total FROM driver_settlements WHERE driver_id = ?
+  `).get(driverId).total;
+
+  res.json({
+    collectedOrders,
+    advanceOrders,
+    settlements,
+    balance: collectedTotal + advanceTotal - settledTotal,
+    collected_total: collectedTotal,
+    advance_total: advanceTotal,
+  });
 });
 
 // POST /api/settlements — admin haydovchidan pul oldi
@@ -123,12 +162,18 @@ router.post('/', requireAdmin, (req, res) => {
     WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
   `).get(Number(driver_id));
 
+  const advanceHeld = db.prepare(`
+    SELECT COALESCE(SUM(o.advance_payment), 0) as total
+    FROM orders o
+    WHERE o.assigned_driver_id = ? AND o.advance_payment > 0 AND o.payment_status != 'tolangan'
+  `).get(Number(driver_id));
+
   const settled = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) as total FROM driver_settlements
     WHERE driver_id = ?
   `).get(Number(driver_id));
 
-  const balance = collected.total - settled.total;
+  const balance = collected.total + advanceHeld.total - settled.total;
   if (amount > balance + 0.01) {
     return res.status(400).json({
       error: `Haydovchida faqat ${balance} so'm bor`,

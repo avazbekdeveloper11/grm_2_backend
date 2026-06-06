@@ -117,6 +117,7 @@ function initDb() {
     "ALTER TABLE services ADD COLUMN discount_amount REAL NOT NULL DEFAULT 0",
     "ALTER TABLE orders ADD COLUMN manual_price REAL",
     "ALTER TABLE orders ADD COLUMN advance_payment REAL NOT NULL DEFAULT 0",
+    "ALTER TABLE orders ADD COLUMN advance_payment_at TEXT",
     `CREATE TABLE IF NOT EXISTS salary_percent_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       percent REAL NOT NULL,
@@ -295,6 +296,7 @@ function initDb() {
           total_price             REAL NOT NULL DEFAULT 0,
           discount_amount         REAL NOT NULL DEFAULT 0,
           advance_payment         REAL NOT NULL DEFAULT 0,
+          advance_payment_at      TEXT,
           status                  TEXT NOT NULL DEFAULT 'yangi'
                                     CHECK(status IN ('yangi','qabulQilindi','yuvilyapti','upakovka','tayyor','yetkazildi')),
           payment_status          TEXT NOT NULL DEFAULT 'tolanmagan'
@@ -313,7 +315,7 @@ function initDb() {
         )
       `);
       const allNewCols2 = ['id','customer_name','phone','address','carpet_count','carpet_types',
-        'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment',
+        'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment','advance_payment_at',
         'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
         'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','manual_price','created_at'];
       const cols2 = allNewCols2.filter(c => curColNames2.includes(c)).join(',');

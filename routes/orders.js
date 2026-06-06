@@ -371,7 +371,8 @@ router.post('/:id/advance-payment', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Noto\'g\'ri summa' });
   }
 
-  db.prepare('UPDATE orders SET advance_payment = ? WHERE id = ?').run(advance, id);
+  const now = new Date().toISOString();
+  db.prepare('UPDATE orders SET advance_payment = ?, advance_payment_at = ? WHERE id = ?').run(advance, now, id);
   const result = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
   broadcast('order_updated', { order_id: id, status: result.status });
   res.json(result);
@@ -473,38 +474,67 @@ router.get('/drivers/collections', requireAuth, (req, res) => {
   const db = getDb();
   const { date } = req.query;
 
-  let where = "o.payment_status = 'tolangan' AND o.collected_by IS NOT NULL";
-  const params = [];
-
+  // To'liq to'langan buyurtmalar
+  let collectedWhere = "o.payment_status = 'tolangan' AND o.collected_by IS NOT NULL";
+  const collectedParams = [];
   if (date) {
-    where += " AND date(o.collected_at) = ?";
-    params.push(date);
+    collectedWhere += " AND date(o.collected_at) = ?";
+    collectedParams.push(date);
   }
 
-  // Per-driver totals (order_items mavjud bo'lsa ulardan hisoblash)
-  const rows = db.prepare(`
-    SELECT
-      u.id, u.name,
-      COUNT(o.id) as order_count,
-      SUM(COALESCE(
-        (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
-        o.total_price
-      )) as total_collected,
-      GROUP_CONCAT(o.id) as order_ids
-    FROM users u
-    LEFT JOIN orders o ON o.collected_by = u.id AND ${where}
-    WHERE u.role = 'driver' AND u.is_active = 1
-    GROUP BY u.id
-  `).all(...params);
+  // Avans to'lovlar (to'lanmagan buyurtmalardan)
+  let advanceWhere = "o.advance_payment > 0 AND o.payment_status != 'tolangan' AND o.advance_payment_at IS NOT NULL AND o.assigned_driver_id IS NOT NULL";
+  const advanceParams = [];
+  if (date) {
+    advanceWhere += " AND date(o.advance_payment_at) = ?";
+    advanceParams.push(date);
+  }
 
-  // Uncollected (assigned to driver but not paid)
+  const drivers = db.prepare(`SELECT id, name FROM users WHERE role = 'driver' AND is_active = 1 ORDER BY name`).all();
+
+  const rows = drivers.map(u => {
+    // To'liq to'langan buyurtmalardan yig'im
+    const collected = db.prepare(`
+      SELECT
+        COUNT(o.id) as order_count,
+        COALESCE(SUM(COALESCE(
+          (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
+          o.total_price
+        ) - o.advance_payment), 0) as collected_sum
+      FROM orders o
+      WHERE o.collected_by = ? AND ${collectedWhere}
+    `).get(u.id, ...collectedParams);
+
+    // Avans to'lovlar (hali to'lanmagan buyurtmalardan)
+    const advances = db.prepare(`
+      SELECT
+        COUNT(o.id) as advance_count,
+        COALESCE(SUM(o.advance_payment), 0) as advance_sum
+      FROM orders o
+      WHERE o.assigned_driver_id = ? AND ${advanceWhere}
+    `).get(u.id, ...advanceParams);
+
+    return {
+      id: u.id,
+      name: u.name,
+      order_count: (collected.order_count || 0) + (advances.advance_count || 0),
+      collected_count: collected.order_count || 0,
+      advance_count: advances.advance_count || 0,
+      total_collected: (collected.collected_sum || 0) + (advances.advance_sum || 0),
+      collected_sum: collected.collected_sum || 0,
+      advance_sum: advances.advance_sum || 0,
+    };
+  });
+
+  // Uncollected (assigned to driver but not paid, no advance)
   const uncollected = db.prepare(`
     SELECT
       u.id as driver_id, u.name as driver_name,
-      o.id, o.customer_name, o.total_price, o.status
+      o.id, o.customer_name, o.total_price, o.advance_payment, o.status
     FROM orders o
     JOIN users u ON u.id = o.assigned_driver_id
     WHERE o.payment_status = 'tolanmagan'
+      AND o.advance_payment = 0
       AND o.assigned_driver_id IS NOT NULL
     ORDER BY o.created_at DESC
   `).all();
