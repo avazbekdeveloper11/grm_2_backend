@@ -75,8 +75,7 @@ router.get('/', requireAuth, (req, res) => {
   }
 
   let roleExtra = null;
-  if (user.role === 'worker') roleExtra = { cond: 'o.assigned_worker_id = ?', params: [user.id] };
-  else if (user.role === 'driver') roleExtra = { cond: 'o.assigned_driver_id = ?', params: [user.id] };
+  if (user.role === 'driver') roleExtra = { cond: 'o.assigned_driver_id = ?', params: [user.id] };
 
   const { where, params } = buildWhere(roleExtra);
 
