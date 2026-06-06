@@ -194,7 +194,10 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // POST /api/orders
-router.post('/', requireAdmin, (req, res) => {
+router.post('/', requireAuth, (req, res) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'driver') {
+    return res.status(403).json({ error: 'Ruxsat yo\'q' });
+  }
   const db = getDb();
   const {
     customer_name, phone, address,
@@ -202,6 +205,11 @@ router.post('/', requireAdmin, (req, res) => {
     assigned_worker_id, assigned_driver_id,
     notes, carpet_count, carpet_types,
   } = req.body;
+
+  // Driver o'zini avtomatik tayinlaydi
+  const effectiveDriverId = req.user.role === 'driver'
+    ? req.user.id
+    : (assigned_driver_id || null);
 
   if (!customer_name || !phone || !address || !pickup_date || !delivery_date) {
     return res.status(400).json({ error: "Majburiy maydonlar to'ldirilmagan" });
@@ -214,7 +222,7 @@ router.post('/', requireAdmin, (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     customer_name, phone, address, pickup_date, delivery_date,
-    assigned_worker_id || null, assigned_driver_id || null,
+    assigned_worker_id || null, effectiveDriverId,
     notes || null,
     carpet_count || 0,
     carpet_types ?? '',
