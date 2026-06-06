@@ -96,10 +96,14 @@ function cyrillicToLatin(str) {
   return result;
 }
 
-// Qaysi maydondagi text maydonlarni o'girish kerak
-const TEXT_FIELDS = new Set([
-  'name', 'customer_name', 'address', 'notes',
-  'carpet_types', 'service_name', 'error', 'message', 'note',
+// Texnik fieldlar — transliteratsiya qilinmaydi
+const SKIP_FIELDS = new Set([
+  'id', 'order_id', 'service_id', 'user_id', 'worker_id', 'driver_id',
+  'assigned_worker_id', 'assigned_driver_id', 'collected_by',
+  'status', 'payment_status', 'role', 'unit_type',
+  'phone', 'login', 'password', 'fcm_token',
+  'pickup_date', 'delivery_date', 'created_at', 'updated_at', 'collected_at',
+  'token', 'key', 'value',
 ]);
 
 function transliterateObj(obj, fn) {
@@ -109,7 +113,7 @@ function transliterateObj(obj, fn) {
   if (typeof obj === 'object') {
     const out = {};
     for (const [k, v] of Object.entries(obj)) {
-      out[k] = TEXT_FIELDS.has(k) ? transliterateObj(v, fn) : v;
+      out[k] = SKIP_FIELDS.has(k) ? v : transliterateObj(v, fn);
     }
     return out;
   }
