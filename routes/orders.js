@@ -41,16 +41,17 @@ router.get('/', requireAuth, (req, res) => {
   const like = q ? `%${q}%` : null;
   const idQ = q ? q.replace(/^#+/, '').replace(/^0+/, '') : null;
 
-  // latin→kirill: asl registr + kichik harf versiyasi (DB da qanday saqlanganini bilmaymiz)
-  const qCyrOrig  = q ? latinToCyrillic(q) : null;
-  const qCyrLower = q ? latinToCyrillic(q.toLowerCase()) : null;
-  // kirill→latin: asl registr + kichik harf versiyasi
-  const qLatOrig  = q ? cyrillicToLatin(q) : null;
-  const qLatLower = q ? cyrillicToLatin(q.toLowerCase()) : null;
+  const title = s => s ? s[0].toUpperCase() + s.slice(1).toLowerCase() : s;
 
-  // O'zgargan versiyalarni yig'amiz (duplikat va original `q` ni o'tkazib yuboramiz)
-  const alts = [...new Set([qCyrOrig, qCyrLower, qLatOrig, qLatLower])]
-    .filter(v => v && v !== q && v !== q.toLowerCase());
+  const qLower    = q.toLowerCase();
+  const qCyrLower = latinToCyrillic(qLower);
+  const qCyrTitle = title(qCyrLower);
+  const qLatLower = cyrillicToLatin(qLower);
+  const qLatTitle = title(qLatLower);
+
+  // Barcha variantlar: asl + kichik + title case (kirill/latin)
+  const alts = [...new Set([qLower, qCyrLower, qCyrTitle, qLatLower, qLatTitle])]
+    .filter(v => v && v !== q);
 
   function buildWhere(extraCond) {
     const conds = [];
