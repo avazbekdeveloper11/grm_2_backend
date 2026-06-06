@@ -28,34 +28,48 @@ router.get('/', requireAuth, (req, res) => {
   const db = getDb();
   const { user } = req;
 
-  let orders;
-  if (user.role === 'worker') {
-    orders = db.prepare(`
-      SELECT o.*, uw.name as worker_name, ud.name as driver_name
-      FROM orders o
-      LEFT JOIN users uw ON uw.id = o.assigned_worker_id
-      LEFT JOIN users ud ON ud.id = o.assigned_driver_id
-      WHERE o.assigned_worker_id = ?
-      ORDER BY o.created_at DESC
-    `).all(user.id);
-  } else if (user.role === 'driver') {
-    orders = db.prepare(`
-      SELECT o.*, uw.name as worker_name, ud.name as driver_name
-      FROM orders o
-      LEFT JOIN users uw ON uw.id = o.assigned_worker_id
-      LEFT JOIN users ud ON ud.id = o.assigned_driver_id
-      WHERE o.assigned_driver_id = ?
-      ORDER BY o.created_at DESC
-    `).all(user.id);
-  } else {
-    orders = db.prepare(`
-      SELECT o.*, uw.name as worker_name, ud.name as driver_name
-      FROM orders o
-      LEFT JOIN users uw ON uw.id = o.assigned_worker_id
-      LEFT JOIN users ud ON ud.id = o.assigned_driver_id
-      ORDER BY o.created_at DESC
-    `).all();
+  const q = (req.query.q || '').trim();
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+  const offset = (page - 1) * limit;
+
+  // search pattern: wildcard on name, phone, address; exact prefix on id
+  const like = q ? `%${q.replace(/[%_]/g, '\\$&')}%` : null;
+  const idQ = q ? q.replace(/^#+/, '').replace(/^0+/, '') : null;
+
+  function buildWhere(extraCond) {
+    const conds = [];
+    const params = [];
+    if (extraCond) { conds.push(extraCond.cond); params.push(...extraCond.params); }
+    if (like) {
+      conds.push(`(o.customer_name LIKE ? OR o.phone LIKE ? OR o.address LIKE ? OR CAST(o.id AS TEXT) = ?)`);
+      params.push(like, like, like, idQ);
+    }
+    return {
+      where: conds.length ? 'WHERE ' + conds.join(' AND ') : '',
+      params,
+    };
   }
+
+  let roleExtra = null;
+  if (user.role === 'worker') roleExtra = { cond: 'o.assigned_worker_id = ?', params: [user.id] };
+  else if (user.role === 'driver') roleExtra = { cond: 'o.assigned_driver_id = ?', params: [user.id] };
+
+  const { where, params } = buildWhere(roleExtra);
+
+  const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM orders o ${where}`).get(...params);
+  const total = countRow.cnt;
+
+  const orders = db.prepare(`
+    SELECT o.*, uw.name as worker_name, ud.name as driver_name
+    FROM orders o
+    LEFT JOIN users uw ON uw.id = o.assigned_worker_id
+    LEFT JOIN users ud ON ud.id = o.assigned_driver_id
+    ${where}
+    ORDER BY o.created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
   // Har bir order uchun items_summary qo'shamiz
   const placeholder = orders.map(() => '?').join(',') || '0';
 
@@ -112,7 +126,7 @@ router.get('/', requireAuth, (req, res) => {
       items_summary: summary,
     };
   });
-  res.json(result);
+  res.json({ items: result, total, page, limit });
 });
 
 // GET /api/orders/:id
