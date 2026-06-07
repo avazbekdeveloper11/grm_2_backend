@@ -73,35 +73,35 @@ router.get('/driver/:id', requireAuth, (req, res) => {
   const db = getDb();
   const driverId = Number(req.params.id);
 
-  // To'liq to'langan buyurtmalar (kunlik guruhlangan, order_items dan skidkali narx)
+  // To'liq to'langan buyurtmalar — har bir zakaz alohida
   const collectedOrders = db.prepare(`
     SELECT
-      date(o.collected_at) as day,
-      COUNT(*) as count,
-      SUM(COALESCE(o.manual_price, COALESCE(
+      o.id,
+      o.customer_name,
+      o.collected_at,
+      o.advance_payment,
+      COALESCE(o.manual_price, COALESCE(
         (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
         o.total_price
-      ))) as total,
-      SUM(o.advance_payment) as advance_total
+      )) as collected_amount
     FROM orders o
     WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
-    GROUP BY date(o.collected_at)
-    ORDER BY day DESC
-    LIMIT 30
+    ORDER BY o.collected_at DESC
+    LIMIT 50
   `).all(driverId);
 
-  // Avans to'lovlar (hali to'lanmagan buyurtmalardan, kunlik guruhlangan)
+  // Avans to'lovlar — har bir zakaz alohida
   const advanceOrders = db.prepare(`
     SELECT
-      date(o.advance_payment_at) as day,
-      COUNT(*) as count,
-      SUM(o.advance_payment) as advance_sum
+      o.id,
+      o.customer_name,
+      o.advance_payment_at,
+      o.advance_payment
     FROM orders o
     WHERE o.assigned_driver_id = ? AND o.advance_payment > 0 AND o.payment_status != 'tolangan'
       AND o.advance_payment_at IS NOT NULL
-    GROUP BY date(o.advance_payment_at)
-    ORDER BY day DESC
-    LIMIT 30
+    ORDER BY o.advance_payment_at DESC
+    LIMIT 50
   `).all(driverId);
 
   // Topshirish tarixi
