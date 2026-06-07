@@ -333,6 +333,11 @@ router.put('/:id', requireAuth, async (req, res) => {
     ? new Date().toISOString()
     : order.washed_at;
 
+  // Yuvish boshlangan sanani belgilash ("yuvilyapti" birinchi marta bosilganda)
+  const newWashingStartedAt = (previousStatus !== 'yuvilyapti' && newStatus === 'yuvilyapti')
+    ? new Date().toISOString()
+    : order.washing_started_at;
+
   // manual_price faqat admin o'zgartira oladi
   const newManualPrice = (req.user.role === 'admin' && manual_price !== undefined)
     ? (manual_price === null || manual_price === '' ? null : Number(manual_price))
@@ -345,7 +350,7 @@ router.put('/:id', requireAuth, async (req, res) => {
       status = ?, payment_status = ?,
       assigned_worker_id = ?, assigned_driver_id = ?,
       notes = ?, carpet_count = ?, carpet_types = ?,
-      manual_price = ?, washed_at = ?
+      manual_price = ?, washed_at = ?, washing_started_at = ?
     WHERE id = ?
   `).run(
     customer_name ?? order.customer_name,
@@ -362,6 +367,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     carpet_types !== undefined ? (carpet_types ?? '') : (order.carpet_types ?? ''),
     newManualPrice,
     newWashedAt,
+    newWashingStartedAt,
     id
   );
 
