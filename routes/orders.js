@@ -75,7 +75,13 @@ router.get('/', requireAuth, (req, res) => {
   }
 
   let roleExtra = null;
-  if (user.role === 'driver') roleExtra = { cond: 'o.assigned_driver_id = ?', params: [user.id] };
+  if (user.role === 'driver') {
+    roleExtra = {
+      cond: `(o.assigned_driver_id = ?
+        OR (o.assigned_driver_id IS NULL AND o.status IN ('yangi', 'tayyor')))`,
+      params: [user.id],
+    };
+  }
 
   const { where, params } = buildWhere(roleExtra);
 
@@ -243,6 +249,34 @@ router.post('/', requireAuth, (req, res) => {
   }
 
   res.status(201).json(order);
+});
+
+// POST /api/orders/:id/claim — haydovchi o'zini tayinlaydi (birinchi bo'lib qabul qilgan oladi)
+router.post('/:id/claim', requireAuth, (req, res) => {
+  if (req.user.role !== 'driver') {
+    return res.status(403).json({ error: 'Faqat haydovchilar uchun' });
+  }
+  const db = getDb();
+  const id = Number(req.params.id);
+  const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  if (!order) return res.status(404).json({ error: 'Buyurtma topilmadi' });
+
+  if (!['yangi', 'tayyor'].includes(order.status)) {
+    return res.status(409).json({ error: 'Bu buyurtmani qabul qilib bo\'lmaydi' });
+  }
+
+  const result = db.prepare(`
+    UPDATE orders SET assigned_driver_id = ?
+    WHERE id = ? AND assigned_driver_id IS NULL
+  `).run(req.user.id, id);
+
+  if (result.changes === 0) {
+    return res.status(409).json({ error: 'Bu buyurtmani boshqa haydovchi qabul qilib bo\'lgan' });
+  }
+
+  const updated = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
+  broadcast('order_updated', { order_id: id, status: updated.status });
+  res.json(updated);
 });
 
 // PUT /api/orders/:id
