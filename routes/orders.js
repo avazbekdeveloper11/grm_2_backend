@@ -157,6 +157,32 @@ router.get('/', requireAuth, (req, res) => {
   res.json({ items: result, total, page, limit });
 });
 
+// GET /api/orders/by-chat/:chatId — Telegram bot: mijoz o'z zakazlarini ko'radi
+router.get('/by-chat/:chatId', requireAuth, (req, res) => {
+  const db = getDb();
+  const chatId = req.params.chatId;
+  const orders = db.prepare(`
+    SELECT id, customer_name, address, status, payment_status,
+           pickup_date, delivery_date, total_price, created_at
+    FROM orders
+    WHERE telegram_chat_id = ?
+    ORDER BY created_at DESC
+    LIMIT 20
+  `).all(chatId);
+  res.json({ items: orders });
+});
+
+// GET /api/orders/bot-stats — admin: bot orqali tushgan zakazlar soni
+router.get('/bot-stats', requireAuth, (req, res) => {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COUNT(*) as total,
+      SUM(CASE WHEN date(created_at) = date('now') THEN 1 ELSE 0 END) as today
+    FROM orders WHERE telegram_chat_id IS NOT NULL
+  `).get();
+  res.json({ total: row.total || 0, today: row.today || 0 });
+});
+
 // GET /api/orders/:id
 router.get('/:id', requireAuth, (req, res) => {
   const db = getDb();
@@ -210,6 +236,7 @@ router.post('/', requireAuth, (req, res) => {
     pickup_date, delivery_date,
     assigned_worker_id, assigned_driver_id,
     notes, carpet_count, carpet_types,
+    telegram_chat_id,
   } = req.body;
 
   // Driver o'zini avtomatik tayinlaydi
@@ -224,14 +251,16 @@ router.post('/', requireAuth, (req, res) => {
   const result = db.prepare(`
     INSERT INTO orders
       (customer_name, phone, address, pickup_date, delivery_date,
-       assigned_worker_id, assigned_driver_id, notes, carpet_count, carpet_types)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       assigned_worker_id, assigned_driver_id, notes, carpet_count, carpet_types,
+       telegram_chat_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     customer_name, phone, address, pickup_date, delivery_date,
     assigned_worker_id || null, effectiveDriverId,
     notes || null,
     carpet_count || 0,
     carpet_types ?? '',
+    telegram_chat_id || null,
   );
 
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(result.lastInsertRowid);
