@@ -20,7 +20,7 @@ router.get('/balances', requireAuth, (req, res) => {
     const collected = db.prepare(`
       SELECT
         COALESCE(SUM(
-          COALESCE((SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id), o.total_price)
+          COALESCE(o.manual_price, COALESCE((SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id), o.total_price))
         ), 0) as total,
         COUNT(*) as count
       FROM orders o
@@ -78,10 +78,10 @@ router.get('/driver/:id', requireAuth, (req, res) => {
     SELECT
       date(o.collected_at) as day,
       COUNT(*) as count,
-      SUM(COALESCE(
+      SUM(COALESCE(o.manual_price, COALESCE(
         (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
         o.total_price
-      )) as total,
+      ))) as total,
       SUM(o.advance_payment) as advance_total
     FROM orders o
     WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
@@ -116,10 +116,10 @@ router.get('/driver/:id', requireAuth, (req, res) => {
 
   // Balans: to'langan + avanslar - topshirilgan
   const collectedTotal = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(
+    SELECT COALESCE(SUM(COALESCE(o.manual_price, COALESCE(
       (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
       o.total_price
-    )), 0) as total
+    ))), 0) as total
     FROM orders o WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
   `).get(driverId).total;
 
@@ -154,10 +154,10 @@ router.post('/', requireAdmin, (req, res) => {
 
   // Haydovchi balansini tekshirish
   const collected = db.prepare(`
-    SELECT COALESCE(SUM(COALESCE(
+    SELECT COALESCE(SUM(COALESCE(o.manual_price, COALESCE(
       (SELECT SUM(oi.total_price) FROM order_items oi WHERE oi.order_id = o.id),
       o.total_price
-    )), 0) as total
+    ))), 0) as total
     FROM orders o
     WHERE o.collected_by = ? AND o.payment_status = 'tolangan'
   `).get(Number(driver_id));
