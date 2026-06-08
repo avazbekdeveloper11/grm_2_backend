@@ -121,6 +121,7 @@ function initDb() {
     "ALTER TABLE orders ADD COLUMN telegram_chat_id TEXT",
     "ALTER TABLE orders ADD COLUMN washed_at TEXT",
     "ALTER TABLE orders ADD COLUMN washing_started_at TEXT",
+    "ALTER TABLE orders ADD COLUMN assigned_worker_at TEXT",
     `CREATE TABLE IF NOT EXISTS salary_percent_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       percent REAL NOT NULL,
@@ -404,6 +405,20 @@ function initDb() {
   if (settingCount === 0) {
     db.prepare("INSERT INTO settings (key, value) VALUES ('price_per_sqm', '15000')").run();
     console.log("✓ Sozlamalar yaratildi");
+  }
+
+  // Search indexlari (tezlashtirish uchun)
+  const indexes = [
+    'CREATE INDEX IF NOT EXISTS idx_orders_customer_name ON orders(customer_name)',
+    'CREATE INDEX IF NOT EXISTS idx_orders_phone ON orders(phone)',
+    'CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)',
+    'CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC)',
+    'CREATE INDEX IF NOT EXISTS idx_orders_worker ON orders(assigned_worker_id)',
+    'CREATE INDEX IF NOT EXISTS idx_orders_driver ON orders(assigned_driver_id)',
+    'CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id)',
+  ];
+  for (const idx of indexes) {
+    try { db.exec(idx); } catch (_) {}
   }
 
   console.log("✓ Ma'lumotlar bazasi tayyor:", DB_PATH);

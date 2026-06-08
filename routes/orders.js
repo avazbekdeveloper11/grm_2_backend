@@ -85,9 +85,7 @@ router.get('/', requireAuth, (req, res) => {
 
   const { where, params } = buildWhere(roleExtra);
 
-  const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM orders o ${where}`).get(...params);
-  const total = countRow.cnt;
-
+  // LIMIT+1 trick — COUNT queryni o'tkazib yuboramiz (tezroq)
   const orders = db.prepare(`
     SELECT o.*, uw.name as worker_name, ud.name as driver_name
     FROM orders o
@@ -96,7 +94,20 @@ router.get('/', requireAuth, (req, res) => {
     ${where}
     ORDER BY o.created_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, limit, offset);
+  `).all(...params, limit + 1, offset);
+
+  const hasMore = orders.length > limit;
+  if (hasMore) orders.pop(); // ortiqcha elementni olib tashlaymiz
+
+  // Total faqat birinchi sahifa va qidiruv bo'lmaganda aniq hisoblanadi
+  let total;
+  if (!q && page === 1) {
+    const countRow = db.prepare(`SELECT COUNT(*) as cnt FROM orders o ${where}`).get(...params);
+    total = countRow.cnt;
+  } else {
+    // Taxminiy total: agar ko'proq bor bo'lsa, offset + limit + 1
+    total = hasMore ? offset + limit + 1 : offset + orders.length;
+  }
 
   // Har bir order uchun items_summary qo'shamiz
   const placeholder = orders.map(() => '?').join(',') || '0';
@@ -338,6 +349,13 @@ router.put('/:id', requireAuth, async (req, res) => {
     ? new Date().toISOString()
     : order.washing_started_at;
 
+  // Worker tayinlangan sanani belgilash (birinchi marta worker tayinlanganda)
+  const newAssignedWorkerAt = (assigned_worker_id && !order.assigned_worker_id)
+    ? new Date().toISOString()
+    : (assigned_worker_id !== undefined && assigned_worker_id !== order.assigned_worker_id && assigned_worker_id)
+      ? new Date().toISOString()
+      : order.assigned_worker_at;
+
   // manual_price faqat admin o'zgartira oladi
   const newManualPrice = (req.user.role === 'admin' && manual_price !== undefined)
     ? (manual_price === null || manual_price === '' ? null : Number(manual_price))
@@ -350,7 +368,8 @@ router.put('/:id', requireAuth, async (req, res) => {
       status = ?, payment_status = ?,
       assigned_worker_id = ?, assigned_driver_id = ?,
       notes = ?, carpet_count = ?, carpet_types = ?,
-      manual_price = ?, washed_at = ?, washing_started_at = ?
+      manual_price = ?, washed_at = ?, washing_started_at = ?,
+      assigned_worker_at = ?
     WHERE id = ?
   `).run(
     customer_name ?? order.customer_name,
@@ -368,6 +387,7 @@ router.put('/:id', requireAuth, async (req, res) => {
     newManualPrice,
     newWashedAt,
     newWashingStartedAt,
+    newAssignedWorkerAt,
     id
   );
 
