@@ -185,13 +185,19 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
   // Update order total_price
   db.prepare('UPDATE orders SET total_price = ?, discount_amount = ? WHERE id = ?').run(finalPrice, discountAmount, orderId);
 
+  // Agar status "yangi" bo'lsa va items qo'shilsa → "qabulQilindi" ga o'tkazamiz
+  if (order.status === 'yangi') {
+    db.prepare("UPDATE orders SET status = 'qabulQilindi' WHERE id = ?").run(orderId);
+  }
+
   const savedItems = db.prepare(`
     SELECT oi.*, s.name as service_name, s.unit_type
     FROM order_items oi JOIN services s ON s.id = oi.service_id
     WHERE oi.order_id = ?
   `).all(orderId);
 
-  res.status(201).json({ items: savedItems, total_price: finalPrice, discount_amount: discountAmount });
+  const updatedOrder = db.prepare('SELECT status FROM orders WHERE id = ?').get(orderId);
+  res.status(201).json({ items: savedItems, total_price: finalPrice, discount_amount: discountAmount, status: updatedOrder.status });
 });
 
 // GET /api/services/worker/:workerId/items — worker'ning barcha order items
