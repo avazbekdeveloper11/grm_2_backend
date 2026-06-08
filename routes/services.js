@@ -194,4 +194,29 @@ router.post('/order/:orderId/items', requireAuth, (req, res) => {
   res.status(201).json({ items: savedItems, total_price: finalPrice, discount_amount: discountAmount });
 });
 
+// GET /api/services/worker/:workerId/items — worker'ning barcha order items
+router.get('/worker/:workerId/items', requireAuth, (req, res) => {
+  const db = getDb();
+  const workerId = req.params.workerId;
+
+  const items = db.prepare(`
+    SELECT oi.*, o.id as order_id, s.name as service_name, s.unit_type,
+           s.discount_enabled, s.discount_min_qty, s.discount_amount as service_discount_pct
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    JOIN services s ON s.id = oi.service_id
+    WHERE o.assigned_worker_id = ?
+    ORDER BY oi.order_id, oi.id
+  `).all(workerId);
+
+  // order_id bo'yicha guruhlash
+  const result = {};
+  for (const item of items) {
+    const oid = item.order_id;
+    if (!result[oid]) result[oid] = [];
+    result[oid].push(item);
+  }
+  res.json(result);
+});
+
 module.exports = router;
