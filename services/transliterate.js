@@ -99,10 +99,12 @@ function cyrillicToLatin(str) {
 // Texnik fieldlar — transliteratsiya qilinmaydi
 const SKIP_FIELDS = new Set([
   'id', 'order_id', 'service_id', 'user_id', 'worker_id', 'driver_id',
-  'assigned_worker_id', 'assigned_driver_id', 'collected_by',
+  'assigned_worker_id', 'assigned_driver_id', 'assigned_upakovchik_id', 'collected_by',
   'status', 'payment_status', 'role', 'unit_type',
   'phone', 'login', 'password', 'fcm_token',
   'pickup_date', 'delivery_date', 'created_at', 'updated_at', 'collected_at',
+  'washing_started_at', 'washed_at', 'assigned_worker_at', 'advance_payment_at',
+  'effective_from',
   'token', 'key', 'value',
 ]);
 
