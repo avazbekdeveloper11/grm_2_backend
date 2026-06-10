@@ -153,10 +153,18 @@ function initDb() {
         price_per_unit REAL NOT NULL DEFAULT 0,
         is_active     INTEGER NOT NULL DEFAULT 1,
         sort_order    INTEGER NOT NULL DEFAULT 0,
-        created_at    TEXT DEFAULT (datetime('now'))
+        created_at    TEXT DEFAULT (datetime('now')),
+        discount_enabled INTEGER NOT NULL DEFAULT 0,
+        discount_min_qty REAL NOT NULL DEFAULT 0,
+        discount_amount REAL NOT NULL DEFAULT 0
       )
     `).run();
-    db.prepare('INSERT INTO services_new SELECT * FROM services').run();
+    db.prepare(`
+      INSERT INTO services_new (id, name, unit_type, price_per_unit, is_active, sort_order, created_at, discount_enabled, discount_min_qty, discount_amount)
+      SELECT id, name, unit_type, price_per_unit, is_active, sort_order, created_at,
+             COALESCE(discount_enabled, 0), COALESCE(discount_min_qty, 0), COALESCE(discount_amount, 0)
+      FROM services
+    `).run();
     db.prepare('DROP TABLE services').run();
     db.prepare('ALTER TABLE services_new RENAME TO services').run();
     console.log("✓ services.unit_type: 'meter' qo'shildi");
