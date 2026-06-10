@@ -1,7 +1,7 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'gilam.db');
+const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, 'gilam-2.db');
 
 let db;
 
