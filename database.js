@@ -323,13 +323,18 @@ function initDb() {
           collected_by            INTEGER REFERENCES users(id),
           collected_at            TEXT,
           manual_price            REAL,
+          telegram_chat_id        TEXT,
+          washed_at               TEXT,
+          washing_started_at      TEXT,
+          assigned_worker_at      TEXT,
           created_at              TEXT DEFAULT (datetime('now'))
         )
       `);
       const allNewCols2 = ['id','customer_name','phone','address','carpet_count','carpet_types',
         'pickup_date','delivery_date','price','total_price','discount_amount','advance_payment','advance_payment_at',
         'status','payment_status','assigned_worker_id','assigned_driver_id','notes',
-        'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','manual_price','created_at'];
+        'items_summary','pickup_lat','pickup_lng','collected_by','collected_at','manual_price',
+        'telegram_chat_id','washed_at','washing_started_at','assigned_worker_at','created_at'];
       const cols2 = allNewCols2.filter(c => curColNames2.includes(c)).join(',');
       db.exec(`INSERT INTO orders_new (${cols2}) SELECT ${cols2} FROM orders`);
       db.exec('DROP TABLE orders');
